@@ -288,23 +288,43 @@ router.get('/stream', async (req, res) => {
         const contentType = response.headers.get('content-type') || '';
         res.set('Access-Control-Allow-Origin', '*');
 
-        // Read response as array buffer
-        const buffer = await response.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
+        // Create an async iterator for the response body
+        // Note: undici fetch returns an iterable body
+        const iterator = response.body[Symbol.asyncIterator]();
+        const first = await iterator.next();
 
-        // Check if it's an HLS manifest by looking at first bytes (#EXTM3U = 23 45 58 54 4D 33 55)
-        const textPrefix = String.fromCharCode(...bytes.slice(0, 7));
+        if (first.done) {
+            // Empty response
+            res.set('Content-Type', contentType || 'application/octet-stream');
+            return res.end();
+        }
+
+        const firstChunk = Buffer.from(first.value);
+
+        // Peek at first bytes to check for HLS manifest (#EXTM3U)
+        const textPrefix = firstChunk.subarray(0, 7).toString('utf8');
         const contentLooksLikeHls = textPrefix === '#EXTM3U';
 
         if (contentLooksLikeHls) {
+            // HLS Manifest: We must read the WHOLE stream to rewrite it
+            // This is fine because manifests are small text files
+            const chunks = [firstChunk];
+
+            // Consume the rest of the stream
+            let result = await iterator.next();
+            while (!result.done) {
+                chunks.push(Buffer.from(result.value));
+                result = await iterator.next();
+            }
+
+            const buffer = Buffer.concat(chunks);
+
             // Use the final URL after redirects for base URL calculation
-            // This is critical for Xtream CDNs that redirect to different servers
             const finalUrl = response.url || url;
             console.log(`[Proxy] Processing HLS manifest from: ${finalUrl.substring(0, 80)}...`);
             res.set('Content-Type', 'application/vnd.apple.mpegurl');
 
-            let manifest = Buffer.from(buffer).toString('utf-8');
-            // Rewrite URLs inside manifest
+            let manifest = buffer.toString('utf-8');
 
             const finalUrlObj = new URL(finalUrl);
             const baseUrl = finalUrlObj.origin + finalUrlObj.pathname.substring(0, finalUrlObj.pathname.lastIndexOf('/') + 1);
@@ -312,6 +332,7 @@ router.get('/stream', async (req, res) => {
 
             manifest = manifest.split('\n').map(line => {
                 const trimmed = line.trim();
+                // ... same rewrite logic as before ...
                 if (trimmed === '' || trimmed.startsWith('#')) {
                     if (trimmed.includes('URI="')) {
                         return line.replace(/URI="([^"]+)"/g, (match, p1) => {
@@ -324,28 +345,49 @@ router.get('/stream', async (req, res) => {
                     return line;
                 }
 
-                // Check if it's a URL (segment or playlist reference)
+                // Stream URL handling
                 try {
-                    // Handle both relative and absolute URLs
                     let absoluteUrl;
                     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-                        // Already an absolute URL
                         absoluteUrl = trimmed;
                     } else {
-                        // Relative URL - make it absolute
                         absoluteUrl = new URL(trimmed, baseUrl).href;
                     }
                     return `${req.protocol}://${req.get('host')}${req.baseUrl}/stream?url=${encodeURIComponent(absoluteUrl)}`;
                 } catch (e) { return line; }
             }).join('\n');
 
-            // Return rewritten manifest
             return res.send(manifest);
         }
 
-        // Binary content (segments)
+        // Binary content (Video Segment): STREAM IT!
+        // This is the critical fix for "SocketError: other side closed"
+        console.log(`[Proxy] Piping binary stream (${contentType})`);
         res.set('Content-Type', contentType || 'application/octet-stream');
-        return res.send(Buffer.from(buffer));
+
+        // Write the first chunk we already peeked
+        res.write(firstChunk);
+
+        // Pipe the rest of the iterator to the response
+        try {
+            let result = await iterator.next();
+            while (!result.done) {
+                // If client disconnects, stop reading
+                if (res.writableEnded || res.closed) break;
+
+                const canWrite = res.write(Buffer.from(result.value));
+                if (!canWrite) {
+                    // Handle backpressure
+                    await new Promise(resolve => res.once('drain', resolve));
+                }
+                result = await iterator.next();
+            }
+            res.end();
+        } catch (streamErr) {
+            console.error('Stream pipe error:', streamErr);
+            if (!res.headersSent) res.status(500).end();
+            else res.end();
+        }
 
     } catch (err) {
         console.error('Stream proxy error:', err);
