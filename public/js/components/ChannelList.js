@@ -636,6 +636,11 @@ class ChannelList {
             } else {
                 await API.favorites.add(sourceId, channelId, 'channel');
             }
+
+            // Sync to EPG Guide
+            if (window.app?.epgGuide) {
+                window.app.epgGuide.syncFavorite(sourceId, channelId, !wasFavorite);
+            }
         } catch (err) {
             console.error('Error toggling favorite:', err);
             // Revert on error

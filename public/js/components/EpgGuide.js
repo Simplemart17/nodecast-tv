@@ -555,6 +555,11 @@ class EpgGuide {
             } else {
                 await API.favorites.add(sourceId, channelId, 'channel');
             }
+
+            // 4. Re-render if viewing Favorites group (so new favorites appear immediately)
+            if (this.selectedGroup === 'Favorites') {
+                this.render();
+            }
         } catch (err) {
             console.error('Error toggling favorite in EPG:', err);
 
@@ -585,6 +590,44 @@ class EpgGuide {
                 window.app.channelList.syncFavorite(sourceId, channelId, wasFavorite);
             }
         }
+    }
+
+    /**
+     * Sync favorite status from external source (e.g. ChannelList) without API call
+     */
+    syncFavorite(sourceId, channelId, isFavorite) {
+        // Ensure consistent string format for key
+        const key = `${String(sourceId)}:${String(channelId)}`;
+        const currentlyFav = this.favorites.has(key);
+
+        if (currentlyFav === isFavorite) return; // No change needed
+
+        // Update State
+        if (isFavorite) {
+            this.favorites.add(key);
+        } else {
+            this.favorites.delete(key);
+        }
+
+        // Update DOM (All instances in EPG)
+        const rows = this.container.querySelectorAll(`.epg-channel-row[data-channel-id="${channelId}"][data-source-id="${sourceId}"]`);
+        rows.forEach(row => {
+            const btn = row.querySelector('.favorite-btn');
+            if (btn) {
+                if (isFavorite) {
+                    btn.classList.add('active');
+                    btn.innerHTML = '❤️';
+                    btn.title = 'Remove from Favorites';
+                } else {
+                    btn.classList.remove('active');
+                    btn.innerHTML = '♡';
+                    btn.title = 'Add to Favorites';
+                }
+            }
+        });
+
+        // Note: We don't call render() here - the favorites Set is updated
+        // and will be used when the user navigates to Guide or switches groups
     }
 
     /**
