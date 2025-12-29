@@ -1163,6 +1163,74 @@ kbd {
   border-top: 1px solid var(--color-border);
 }
 
+/* EPG Info Modal */
+.epg-info-modal .channel-details {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.epg-info-modal .channel-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.epg-info-modal .channel-meta p {
+  margin: var(--space-xs) 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.epg-info-modal h4 {
+  margin: var(--space-md) 0 var(--space-sm);
+  font-size: 1rem;
+  color: var(--color-text-primary);
+}
+
+.epg-program-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.epg-program {
+  padding: var(--space-sm);
+  margin-bottom: var(--space-xs);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.epg-program.current {
+  background: var(--color-primary-bg);
+  border-left: 3px solid var(--color-primary);
+}
+
+.epg-program-time {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.epg-program-title {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.epg-program-desc {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-top: var(--space-xs);
+}
+
+.no-programs {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-lg);
+}
+
 /* Form Elements */
 .form-group {
   margin-bottom: var(--space-md);

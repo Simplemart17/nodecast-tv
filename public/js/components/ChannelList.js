@@ -116,10 +116,18 @@ class ChannelList {
         }
 
         // Context menu handlers
-        document.addEventListener('click', () => this.hideContextMenu());
+        document.addEventListener('click', (e) => {
+            // Don't close if clicking inside context menu
+            if (!this.contextMenu.contains(e.target)) {
+                this.hideContextMenu();
+            }
+        });
 
         this.contextMenu.querySelectorAll('.context-item').forEach(item => {
-            item.addEventListener('click', (e) => this.handleContextAction(e));
+            item.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent document click from firing
+                this.handleContextAction(e);
+            });
         });
 
         // Intersection Observer for lazy loading
@@ -852,6 +860,7 @@ class ChannelList {
         this.contextMenu.dataset.type = type;
         this.contextMenu.dataset.sourceId = data.sourceId;
         this.contextMenu.dataset.itemId = type === 'group' ? data.group : data.channelId;
+        this.contextMenu.dataset.streamId = data.streamId || '';
 
         this.contextMenu.style.left = `${e.clientX}px`;
         this.contextMenu.style.top = `${e.clientY}px`;
@@ -870,7 +879,7 @@ class ChannelList {
      */
     async handleContextAction(e) {
         const action = e.target.dataset.action;
-        const { type, sourceId, itemId } = this.contextMenu.dataset;
+        const { type, sourceId, itemId, streamId } = this.contextMenu.dataset;
 
         switch (action) {
             case 'play':
@@ -882,17 +891,102 @@ class ChannelList {
                 }
                 break;
             case 'hide':
-                await API.channels.hide(parseInt(sourceId), type, itemId);
-                this.hiddenItems.add(`${type}:${sourceId}:${itemId}`);
+                // Use streamId for hiding Xtream channels (raw ID, not composite)
+                // Server expects 'channel' type, not 'live'
+                const hideId = streamId || itemId;
+                await API.channels.hide(parseInt(sourceId), 'channel', hideId);
+                this.hiddenItems.add(`channel:${sourceId}:${hideId}`);
                 this.render();
                 break;
             case 'epg':
                 // Show EPG info modal
-                this.showEpgInfo(itemId);
+                this.showEpgInfo(sourceId, itemId, streamId);
                 break;
         }
 
         this.hideContextMenu();
+    }
+
+    /**
+     * Show EPG info for a channel
+     */
+    showEpgInfo(sourceId, channelId, streamId) {
+        const channel = this.channels.find(c => c.id === channelId);
+        if (!channel) {
+            alert('Channel not found');
+            return;
+        }
+
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        if (!modal || !modalTitle || !modalBody) return;
+
+        modalTitle.textContent = `📋 ${channel.name} - EPG Info`;
+
+        // Get current and upcoming programs
+        let programsHtml = '<p class="no-programs">No EPG data available for this channel.</p>';
+
+        if (window.app?.epgGuide) {
+            const tvgKey = channel.tvgId || channel.name;
+            const currentProgram = window.app.epgGuide.getCurrentProgram(channel.tvgId, channel.name);
+            const programs = window.app.epgGuide.getChannelPrograms?.(tvgKey) || [];
+
+            if (currentProgram || programs.length > 0) {
+                programsHtml = '<div class="epg-program-list">';
+
+                // Show current program
+                if (currentProgram) {
+                    const startTime = new Date(currentProgram.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const endTime = new Date(currentProgram.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    programsHtml += `
+                        <div class="epg-program current">
+                            <div class="epg-program-time">${startTime} - ${endTime}</div>
+                            <div class="epg-program-title">▶ ${this.escapeHtml(currentProgram.title)}</div>
+                            ${currentProgram.description ? `<div class="epg-program-desc">${this.escapeHtml(currentProgram.description)}</div>` : ''}
+                        </div>
+                    `;
+                }
+
+                // Show upcoming programs (next 5)
+                const now = Date.now();
+                const upcoming = programs
+                    .filter(p => new Date(p.start).getTime() > now)
+                    .slice(0, 5);
+
+                upcoming.forEach(prog => {
+                    const startTime = new Date(prog.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const endTime = new Date(prog.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    programsHtml += `
+                        <div class="epg-program">
+                            <div class="epg-program-time">${startTime} - ${endTime}</div>
+                            <div class="epg-program-title">${this.escapeHtml(prog.title)}</div>
+                        </div>
+                    `;
+                });
+
+                programsHtml += '</div>';
+            }
+        }
+
+        modalBody.innerHTML = `
+            <div class="epg-info-modal">
+                <div class="channel-details">
+                    <img class="channel-logo" src="${channel.tvgLogo || '/img/placeholder.png'}" 
+                         onerror="this.onerror=null;this.src='/img/placeholder.png'" />
+                    <div class="channel-meta">
+                        <p><strong>Group:</strong> ${this.escapeHtml(channel.groupTitle || 'Uncategorized')}</p>
+                        <p><strong>Source:</strong> ${channel.sourceType}</p>
+                        ${channel.tvgId ? `<p><strong>TVG ID:</strong> ${this.escapeHtml(channel.tvgId)}</p>` : ''}
+                    </div>
+                </div>
+                <h4>Program Schedule</h4>
+                ${programsHtml}
+            </div>
+        `;
+
+        modal.classList.add('active');
     }
 
     /**
