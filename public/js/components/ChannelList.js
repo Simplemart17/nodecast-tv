@@ -298,7 +298,9 @@ class ChannelList {
       `;
 
             for (const channel of channels) {
-                const channelHidden = !isFavoritesGroup && this.isHidden('channel', channel.sourceId, channel.id);
+                // Use streamId (raw ID) for hidden check since that's what SourceManager stores
+                const rawChannelId = channel.streamId || channel.id;
+                const channelHidden = !isFavoritesGroup && this.isHidden('channel', channel.sourceId, rawChannelId);
                 if (channelHidden && !this.showHidden) continue;
 
                 const isActive = this.currentChannel?.id === channel.id;

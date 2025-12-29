@@ -284,7 +284,9 @@ class EpgGuide {
 
         // Get channels and filter out hidden ones (always enforce hidden in EPG)
         const playableChannels = (channelList.channels || []).filter(ch => {
-            const isChannelHidden = channelList.isHidden('channel', ch.sourceId, ch.id);
+            // Use streamId (raw ID) for hidden check since that's what SourceManager stores
+            const rawChannelId = ch.streamId || ch.id;
+            const isChannelHidden = channelList.isHidden('channel', ch.sourceId, rawChannelId);
             const isGroupHidden = channelList.isHidden('group', ch.sourceId, ch.groupTitle);
             return !isChannelHidden && !isGroupHidden;
         });
