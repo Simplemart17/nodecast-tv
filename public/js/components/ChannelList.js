@@ -225,8 +225,8 @@ class ChannelList {
         this.filteredChannels = this.channels;
         if (searchTerm) {
             this.filteredChannels = this.channels.filter(ch =>
-                ch.name.toLowerCase().includes(searchTerm) ||
-                (ch.groupTitle && ch.groupTitle.toLowerCase().includes(searchTerm))
+                String(ch.name ?? "").toLowerCase().includes(searchTerm) ||
+                String(ch.groupTitle ?? "").toLowerCase().includes(searchTerm)
             );
         }
 
