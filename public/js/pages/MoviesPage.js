@@ -292,7 +292,7 @@ class MoviesPage {
                         <span class="play-icon">${Icons.play}</span>
                     </div>
                     <button class="favorite-btn ${isFav ? 'active' : ''}" title="${isFav ? 'Remove from Favorites' : 'Add to Favorites'}">
-                        <span class="fav-icon">${Icons.favorite}</span>
+                        <span class="fav-icon">${isFav ? Icons.favorite : Icons.favoriteOutline}</span>
                     </button>
                 </div>
                 <div class="movie-info">
@@ -367,6 +367,7 @@ class MoviesPage {
     async toggleFavorite(movie, btn) {
         const favKey = `${movie.sourceId}:${movie.stream_id}`;
         const isFav = this.favoriteIds.has(favKey);
+        const iconSpan = btn.querySelector('.fav-icon');
 
         try {
             // Optimistic update
@@ -374,11 +375,13 @@ class MoviesPage {
                 this.favoriteIds.delete(favKey);
                 btn.classList.remove('active');
                 btn.title = 'Add to Favorites';
+                if (iconSpan) iconSpan.innerHTML = Icons.favoriteOutline;
                 await API.favorites.remove(movie.sourceId, movie.stream_id, 'movie');
             } else {
                 this.favoriteIds.add(favKey);
                 btn.classList.add('active');
                 btn.title = 'Remove from Favorites';
+                if (iconSpan) iconSpan.innerHTML = Icons.favorite;
                 await API.favorites.add(movie.sourceId, movie.stream_id, 'movie');
             }
         } catch (err) {
@@ -387,9 +390,11 @@ class MoviesPage {
             if (isFav) {
                 this.favoriteIds.add(favKey);
                 btn.classList.add('active');
+                if (iconSpan) iconSpan.innerHTML = Icons.favorite;
             } else {
                 this.favoriteIds.delete(favKey);
                 btn.classList.remove('active');
+                if (iconSpan) iconSpan.innerHTML = Icons.favoriteOutline;
             }
         }
     }

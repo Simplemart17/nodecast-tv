@@ -264,6 +264,44 @@ h4 {
   color: var(--color-text-muted);
 }
 
+/* Search wrapper for clear button */
+.search-wrapper {
+  position: relative;
+  width: 100%;
+  min-width: 150px;
+}
+
+.search-wrapper .search-input {
+  padding-right: 30px;
+  /* Room for clear button */
+}
+
+.search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.search-wrapper:hover .search-clear,
+.search-input:focus~.search-clear {
+  opacity: 0.6;
+}
+
+.search-clear:hover {
+  opacity: 1;
+  color: var(--color-text-primary);
+}
+
 .sidebar-controls {
   display: flex;
   align-items: center;
@@ -614,6 +652,12 @@ video::cue {
   padding: var(--space-md) var(--space-lg);
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
+}
+
+.guide-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
 }
 
 .guide-controls {
@@ -1214,8 +1258,8 @@ kbd {
 }
 
 .epg-program.current {
-  background: var(--color-primary-bg);
-  border-left: 3px solid var(--color-primary);
+  background: var(--color-accent-dim);
+  border-left: 3px solid var(--color-accent);
 }
 
 .epg-program-time {
@@ -1550,10 +1594,7 @@ kbd {
   align-items: center;
 }
 
-.movies-controls .source-select,
-.movies-controls .search-input {
-  min-width: 200px;
-}
+
 
 /* Favorites Button */
 /* Favorites Button Base */
@@ -1760,9 +1801,17 @@ kbd {
   align-items: center;
 }
 
-.series-controls .source-select,
-.series-controls .search-input {
+/* Unified Control Sizing */
+.guide-controls .source-select,
+.movies-controls .source-select,
+.series-controls .source-select {
   min-width: 150px;
+}
+
+.guide-controls .search-wrapper,
+.movies-controls .search-wrapper,
+.series-controls .search-wrapper {
+  width: 220px;
 }
 
 .series-content {
@@ -2023,8 +2072,13 @@ kbd {
 
 /* Animation Utilities */
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spin {

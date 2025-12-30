@@ -37,6 +37,19 @@ class App {
             this.channelList.toggleAllGroups();
         });
 
+        // Search clear buttons (global handler for all)
+        document.querySelectorAll('.search-clear').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const wrapper = btn.closest('.search-wrapper');
+                const input = wrapper?.querySelector('.search-input');
+                if (input) {
+                    input.value = '';
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                }
+            });
+        });
+
         // Initialize home page
         await this.pages.home.init();
         this.navigateTo('home');

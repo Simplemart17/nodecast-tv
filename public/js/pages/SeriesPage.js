@@ -302,7 +302,7 @@ class SeriesPage {
                         <span class="play-icon">${Icons.play}</span>
                     </div>
                     <button class="favorite-btn ${isFav ? 'active' : ''}" title="${isFav ? 'Remove from Favorites' : 'Add to Favorites'}">
-                        <span class="fav-icon">${Icons.favorite}</span>
+                        <span class="fav-icon">${isFav ? Icons.favorite : Icons.favoriteOutline}</span>
                     </button>
                 </div>
                 <div class="series-card-info">
@@ -450,6 +450,7 @@ class SeriesPage {
     async toggleFavorite(series, btn) {
         const favKey = `${series.sourceId}:${series.series_id}`;
         const isFav = this.favoriteIds.has(favKey);
+        const iconSpan = btn.querySelector('.fav-icon');
 
         try {
             // Optimistic update
@@ -457,11 +458,13 @@ class SeriesPage {
                 this.favoriteIds.delete(favKey);
                 btn.classList.remove('active');
                 btn.title = 'Add to Favorites';
+                if (iconSpan) iconSpan.innerHTML = Icons.favoriteOutline;
                 await API.favorites.remove(series.sourceId, series.series_id, 'series');
             } else {
                 this.favoriteIds.add(favKey);
                 btn.classList.add('active');
                 btn.title = 'Remove from Favorites';
+                if (iconSpan) iconSpan.innerHTML = Icons.favorite;
                 await API.favorites.add(series.sourceId, series.series_id, 'series');
             }
         } catch (err) {
@@ -470,9 +473,11 @@ class SeriesPage {
             if (isFav) {
                 this.favoriteIds.add(favKey);
                 btn.classList.add('active');
+                if (iconSpan) iconSpan.innerHTML = Icons.favorite;
             } else {
                 this.favoriteIds.delete(favKey);
                 btn.classList.remove('active');
+                if (iconSpan) iconSpan.innerHTML = Icons.favoriteOutline;
             }
         }
     }

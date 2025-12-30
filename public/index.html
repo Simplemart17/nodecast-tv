@@ -76,7 +76,10 @@
           <!-- Channel Sidebar -->
           <aside class="channel-sidebar">
             <div class="sidebar-header">
-              <input type="text" id="channel-search" placeholder="Search channels..." class="search-input">
+              <div class="search-wrapper">
+                <input type="text" id="channel-search" placeholder="Search channels..." class="search-input">
+                <button type="button" class="search-clear" title="Clear search">&times;</button>
+              </div>
               <div class="sidebar-controls">
                 <select id="source-select" class="source-select">
                   <option value="">All Sources</option>
@@ -129,11 +132,13 @@
         <div class="guide-header">
           <h2>TV Guide</h2>
           <div class="guide-controls">
-            <input type="text" id="epg-search" placeholder="Search channels..." class="search-input"
-              style="min-width: 200px;">
             <select id="epg-group-select" class="source-select">
               <option value="">All Groups</option>
             </select>
+            <div class="search-wrapper">
+              <input type="text" id="epg-search" placeholder="Search channels..." class="search-input">
+              <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
             <button id="guide-prev" class="btn btn-ghost">&larr; Earlier</button>
             <span id="guide-date" class="guide-date">Today</span>
             <button id="guide-next" class="btn btn-ghost">Later &rarr;</button>
@@ -158,7 +163,10 @@
             <select id="movies-category-select" class="source-select">
               <option value="">All Categories</option>
             </select>
-            <input type="text" id="movies-search" placeholder="Search movies..." class="search-input">
+            <div class="search-wrapper">
+              <input type="text" id="movies-search" placeholder="Search movies..." class="search-input">
+              <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
             <button id="movies-favorites-btn" class="btn btn-icon btn-ghost" title="Show Favorites Only">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon">
                 <path
@@ -185,7 +193,10 @@
             <select id="series-category-select" class="source-select">
               <option value="">All Categories</option>
             </select>
-            <input type="text" id="series-search" placeholder="Search series..." class="search-input">
+            <div class="search-wrapper">
+              <input type="text" id="series-search" placeholder="Search series..." class="search-input">
+              <button type="button" class="search-clear" title="Clear search">&times;</button>
+            </div>
             <button id="series-favorites-btn" class="btn btn-icon btn-ghost" title="Show Favorites Only">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon">
                 <path
