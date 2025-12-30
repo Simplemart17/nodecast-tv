@@ -68,12 +68,16 @@ class VideoPlayer {
             maxBufferLength: 30,           // Buffer up to 30 seconds of content
             maxMaxBufferLength: 60,        // Absolute max buffer 60 seconds
             maxBufferSize: 60 * 1000 * 1000, // 60MB max buffer size
+            maxBufferHole: 0.5,            // Allow 0.5s holes in buffer (helps with discontinuities)
             // Live stream settings - stay further from live edge for stability
             liveSyncDurationCount: 3,      // Stay 3 segments behind live
             liveMaxLatencyDurationCount: 10, // Allow up to 10 segments behind before catching up
-            // Handle audio discontinuities (fixes garbled audio during ad transitions)
+            liveBackBufferLength: 30,      // Keep 30s of back buffer for seeking
+            // Audio discontinuity handling (fixes garbled audio during ad transitions)
             stretchShortVideoTrack: true,  // Stretch short segments to avoid gaps
             forceKeyFrameOnDiscontinuity: true, // Force keyframe sync on discontinuity
+            // More aggressive discontinuity recovery
+            maxAudioFramesDrift: 1,        // Allow minimal audio drift before correction
             // Faster recovery from errors
             levelLoadingMaxRetry: 4,
             manifestLoadingMaxRetry: 4,
@@ -101,9 +105,10 @@ class VideoPlayer {
         // Initialize HLS.js if supported
         if (Hls.isSupported()) {
             this.hls = new Hls(this.getHlsConfig());
+            this.lastDiscontinuity = -1; // Track discontinuity changes
 
             this.hls.on(Hls.Events.ERROR, (event, data) => {
-                console.error('HLS error:', data);
+                console.error('HLS error:', data.type, data.details);
                 if (data.fatal) {
                     switch (data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
@@ -131,6 +136,10 @@ class VideoPlayer {
                     // Non-fatal media error - try to recover (handles audio codec issues)
                     console.log('Non-fatal media error, attempting recovery...');
                     this.hls.recoverMediaError();
+                } else if (data.details === 'bufferAppendError' || data.details === 'fragParsingError') {
+                    // Buffer/parsing errors during ad transitions - try recovery
+                    console.log('Buffer/parsing error during segment, recovering...');
+                    this.hls.recoverMediaError();
                 }
             });
 
@@ -143,6 +152,27 @@ class VideoPlayer {
             this.hls.on(Hls.Events.BUFFER_STALLED_ERROR, () => {
                 console.log('Buffer stalled, attempting recovery...');
                 this.hls.recoverMediaError();
+            });
+
+            // Detect discontinuity changes (ad transitions) and help decoder reset
+            this.hls.on(Hls.Events.FRAG_CHANGED, (event, data) => {
+                const frag = data.frag;
+                // Debug: log every fragment change
+                console.log(`[HLS] FRAG_CHANGED: sn=${frag?.sn}, cc=${frag?.cc}, level=${frag?.level}`);
+
+                if (frag && frag.sn !== 'initSegment') {
+                    // Check if we crossed a discontinuity boundary using CC (Continuity Counter)
+                    if (frag.cc !== undefined && frag.cc !== this.lastDiscontinuity) {
+                        console.log(`[HLS] Discontinuity detected: CC ${this.lastDiscontinuity} -> ${frag.cc}`);
+                        this.lastDiscontinuity = frag.cc;
+
+                        // Small nudge to help decoder sync (only if playing)
+                        if (!this.video.paused && this.video.currentTime > 0) {
+                            const nudgeAmount = 0.01;
+                            this.video.currentTime += nudgeAmount;
+                        }
+                    }
+                }
             });
 
             this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -264,6 +294,28 @@ class VideoPlayer {
                             this.hls.recoverMediaError();
                         } else {
                             console.error('Fatal HLS error:', data);
+                        }
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        // Non-fatal media error - just log it (auto-recovery can cause black screens)
+                        console.log('Non-fatal media error:', data.details);
+                    }
+                });
+
+                // Detect discontinuity changes (ad transitions) and help decoder reset
+                this.lastDiscontinuity = -1;
+                this.hls.on(Hls.Events.FRAG_CHANGED, (event, data) => {
+                    const frag = data.frag;
+                    if (frag && frag.sn !== 'initSegment') {
+                        // Check if we crossed a discontinuity boundary using CC (Continuity Counter)
+                        if (frag.cc !== undefined && frag.cc !== this.lastDiscontinuity) {
+                            console.log(`[HLS] Discontinuity detected: CC ${this.lastDiscontinuity} -> ${frag.cc}`);
+                            this.lastDiscontinuity = frag.cc;
+
+                            // Small nudge to help decoder sync (only if playing)
+                            if (!this.video.paused && this.video.currentTime > 0) {
+                                const nudgeAmount = 0.01;
+                                this.video.currentTime += nudgeAmount;
+                            }
                         }
                     }
                 });

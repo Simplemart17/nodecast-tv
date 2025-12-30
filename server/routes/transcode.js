@@ -20,15 +20,17 @@ router.get('/', (req, res) => {
     console.log(`[Transcode] Using binary: ${ffmpegPath}`);
 
     // FFmpeg arguments for transcoding
-    // Video: Copy (passthrough) - most sources are already H264/HEVC which browsers support
-    // Audio: Transcode to AAC - fixes Dolby/AC3/EAC3 that browsers can't play
+    // Optimized for VOD content with incompatible audio (Dolby/AC3/EAC3)
+    // NOT recommended for live streams - use HLS.js directly for those
     const args = [
         '-hide_banner',
-        '-loglevel', 'info',
+        '-loglevel', 'warning',
         '-fflags', '+genpts',
         '-i', url,
-        '-c:v', 'copy', // Video passthrough (no re-encoding = fast!)
-        '-c:a', 'aac',  // Transcode audio to browser-compatible AAC
+        // Video: passthrough (no re-encoding = fast!)
+        '-c:v', 'copy',
+        // Audio: Transcode to browser-compatible AAC with consistent parameters
+        '-c:a', 'aac',
         '-ac', '2',
         '-ar', '48000',
         '-b:a', '128k',
