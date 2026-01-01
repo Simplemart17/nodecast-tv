@@ -115,8 +115,6 @@ class VideoPlayer {
             // Audio settings - prevent glitches during stream transitions
             // Higher drift tolerance = less aggressive correction = fewer glitches
             maxAudioFramesDrift: 8,        // Allow ~185ms audio drift before correction (was 4)
-            // Audio track handling
-            audioStreamController: true,   // Enable audio stream controller
             // Disable progressive/streaming mode for stability with discontinuities
             progressive: false,
             // Stall recovery settings
