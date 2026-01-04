@@ -205,7 +205,8 @@ class EpgGuide {
         }
 
         // Build query params for server-side caching
-        const maxAge = this.getRefreshInterval();
+        // Sync interval is controlled by server, we just hint at max cache age
+        const maxAge = 24; // hours - server controls actual refresh
         const queryParams = forceRefresh ? '?refresh=1' : `?maxAge=${maxAge}`;
 
         // Load EPG from ALL sources in parallel
