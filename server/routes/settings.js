@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { settings, getDefaultSettings } = require('../db');
+const syncService = require('../services/syncService');
 
 /**
  * Get all settings
@@ -24,6 +25,12 @@ router.put('/', async (req, res) => {
     try {
         const updates = req.body;
         const updatedSettings = await settings.update(updates);
+
+        // If sync interval changed, restart the server-side sync timer
+        if (updates.epgRefreshInterval !== undefined) {
+            syncService.restartSyncTimer().catch(console.error);
+        }
+
         res.json(updatedSettings);
     } catch (err) {
         console.error('Error updating settings:', err);
@@ -53,4 +60,16 @@ router.get('/defaults', (req, res) => {
     res.json(getDefaultSettings());
 });
 
+/**
+ * Get sync status (last sync time)
+ * GET /api/settings/sync-status
+ */
+router.get('/sync-status', (req, res) => {
+    const lastSyncTime = syncService.getLastSyncTime();
+    res.json({
+        lastSyncTime: lastSyncTime ? lastSyncTime.toISOString() : null
+    });
+});
+
 module.exports = router;
+

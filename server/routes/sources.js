@@ -185,4 +185,17 @@ router.post('/:id/test', async (req, res) => {
     }
 });
 
+// Global Sync - sync all enabled sources
+router.post('/sync-all', async (req, res) => {
+    try {
+        // Trigger global sync (async - don't wait for completion)
+        syncService.syncAll().catch(console.error);
+        res.json({ success: true, message: 'Global sync started' });
+    } catch (err) {
+        console.error('Error starting global sync:', err);
+        res.status(500).json({ error: 'Failed to start global sync' });
+    }
+});
+
 module.exports = router;
+

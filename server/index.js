@@ -79,7 +79,9 @@ app.listen(PORT, async () => {
     console.log(`NodeCast TV server running on http://localhost:${PORT}`);
 
     // Trigger background sync with delay to allow server to settle
-    setTimeout(() => {
-        syncService.syncAll().catch(console.error);
+    setTimeout(async () => {
+        await syncService.syncAll().catch(console.error);
+        // Start the server-side sync timer after initial sync
+        await syncService.startSyncTimer().catch(console.error);
     }, 5000);
 });

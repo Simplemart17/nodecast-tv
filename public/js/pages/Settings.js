@@ -112,17 +112,16 @@ class SettingsPage {
             // Load saved value from player settings
             epgRefreshSelect.value = this.app.player.settings.epgRefreshInterval || '24';
 
-            // Save on change and restart background timer
+            // Save on change - server will restart its sync timer via PUT /api/settings
             epgRefreshSelect.addEventListener('change', () => {
                 this.app.player.settings.epgRefreshInterval = epgRefreshSelect.value;
                 this.app.player.saveSettings();
-
-                // Restart EPG background refresh with new interval
-                if (window.app?.epgGuide) {
-                    window.app.epgGuide.restartBackgroundRefreshIfNeeded();
-                }
+                // Server-side sync timer is restarted automatically via settings API
             });
         }
+
+        // Update last refreshed display
+        this.updateEpgLastRefreshed();
 
         // Stream output format
         const streamFormatSelect = document.getElementById('setting-stream-format');
@@ -286,6 +285,56 @@ class SettingsPage {
             if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
             if (epgRefreshSelect) epgRefreshSelect.value = s.epgRefreshInterval || '24';
             if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
+        }
+
+        // Update EPG last refreshed display
+        this.updateEpgLastRefreshed();
+    }
+
+    /**
+     * Update the EPG last refreshed display
+     */
+    async updateEpgLastRefreshed() {
+        const display = document.getElementById('epg-last-refreshed');
+        if (!display) return;
+
+        try {
+            // Fetch last sync time from server
+            const response = await fetch('/api/settings/sync-status');
+            if (!response.ok) throw new Error('Failed to fetch sync status');
+            const data = await response.json();
+
+            if (data.lastSyncTime) {
+                const lastRefreshTime = new Date(data.lastSyncTime);
+
+                // Format as relative time or absolute
+                const now = new Date();
+                const diffMs = now - lastRefreshTime;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMins / 60);
+
+                let text;
+                if (diffMins < 1) {
+                    text = 'Just now';
+                } else if (diffMins < 60) {
+                    text = `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+                } else if (diffHours < 24) {
+                    text = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+                } else {
+                    // Use absolute time for older refreshes
+                    text = lastRefreshTime.toLocaleString();
+                }
+
+                display.textContent = text;
+                display.title = lastRefreshTime.toLocaleString(); // Full timestamp on hover
+            } else {
+                display.textContent = 'Never';
+                display.title = 'Sync has not run yet since server started';
+            }
+        } catch (err) {
+            console.error('Error fetching sync status:', err);
+            display.textContent = 'Unknown';
+            display.title = 'Could not fetch sync status';
         }
     }
 

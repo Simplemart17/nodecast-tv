@@ -21,15 +21,19 @@ class EpgGuide {
         this.favorites = new Set(); // Set<"sourceId:channelId">
         this.selectedGroup = 'Favorites'; // Default to Favorites
 
-        // Lazy loading properties
+        // Virtual scrolling properties
         this.filteredChannels = [];
-        this.currentBatch = 0;
-        this.batchSize = 20; // Channels per batch
+        this.rowHeight = 60; // Height of each channel row in pixels
+        this.bufferRows = 5; // Extra rows to render above/below viewport
         this.startTime = null;
         this.endTime = null;
         this.epgContainer = null;
-        this.epgLoader = null;
-        this.epgObserver = null;
+        this.epgSpacer = null;
+        this.scrollContainer = null;
+        this.visibleRows = new Map(); // Map<index, rowElement>
+        this._scrollHandler = null;
+        this._lastVisibleStart = -1;
+        this._lastVisibleEnd = -1;
 
         this.init();
     }
@@ -117,43 +121,23 @@ class EpgGuide {
     }
 
     /**
-     * Get EPG refresh interval from settings (in hours)
-     */
-    getRefreshInterval() {
-        // Read from server-side player settings (synced via Settings page)
-        if (window.app?.player?.settings?.epgRefreshInterval) {
-            return parseFloat(window.app.player.settings.epgRefreshInterval);
-        }
-        return 24; // Default 24 hours
-    }
-
-    /**
-     * Start background EPG refresh timer
-     * Automatically fetches fresh EPG data at the configured interval
+     * Start background EPG display refresh timer
+     * This only refreshes the UI from cached server data.
+     * The actual sync runs on the server independently.
      */
     startBackgroundRefresh() {
         // Clear any existing timer
         this.stopBackgroundRefresh();
 
-        const intervalHours = this.getRefreshInterval();
+        // Refresh display from cache every 5 minutes to pick up server-side sync results
+        const refreshIntervalMs = 5 * 60 * 1000; // 5 minutes
 
-        // If interval is 0 or invalid, don't start timer (manual refresh only)
-        if (!intervalHours || intervalHours <= 0) {
-            console.log('[EPG] Background refresh disabled (manual only mode)');
-            this._currentRefreshInterval = 0;
-            return;
-        }
-
-        const intervalMs = intervalHours * 60 * 60 * 1000; // Convert hours to milliseconds
-
-        console.log(`[EPG] Starting background refresh timer: every ${intervalHours} hours (${Math.round(intervalMs / 1000)}s)`);
+        console.log('[EPG] Starting display refresh timer: every 5 minutes');
 
         this._backgroundRefreshTimer = setInterval(async () => {
-            console.log('[EPG] Background refresh triggered');
+            console.log('[EPG] Refreshing EPG display from cache');
             try {
-                await this.fetchEpgData(true); // Force refresh
-                this.lastRefreshTime = new Date();
-                console.log('[EPG] Background refresh complete');
+                await this.fetchEpgData(false); // Fetch cached data (no force refresh)
 
                 // Update channel list program info if visible
                 if (window.app?.channelList) {
@@ -161,12 +145,9 @@ class EpgGuide {
                     window.app.channelList.updateVisibleEpgInfo?.();
                 }
             } catch (err) {
-                console.error('[EPG] Background refresh failed:', err);
+                console.error('[EPG] Display refresh failed:', err);
             }
-        }, intervalMs);
-
-        // Store current interval so we can detect changes
-        this._currentRefreshInterval = intervalHours;
+        }, refreshIntervalMs);
     }
 
     /**
@@ -177,18 +158,6 @@ class EpgGuide {
             clearInterval(this._backgroundRefreshTimer);
             this._backgroundRefreshTimer = null;
             console.log('[EPG] Background refresh timer stopped');
-        }
-    }
-
-    /**
-     * Restart background refresh if interval has changed
-     * Called when settings change
-     */
-    restartBackgroundRefreshIfNeeded() {
-        const newInterval = this.getRefreshInterval();
-        if (this._currentRefreshInterval !== newInterval) {
-            console.log(`[EPG] Refresh interval changed: ${this._currentRefreshInterval}h -> ${newInterval}h`);
-            this.startBackgroundRefresh();
         }
     }
 
@@ -456,7 +425,10 @@ class EpgGuide {
         // Generate time slots
         const timeSlots = this.generateTimeSlots(this.startTime, this.endTime);
 
-        // Build initial HTML structure
+        // Calculate total height for virtual scrolling
+        const totalHeight = this.filteredChannels.length * this.rowHeight;
+
+        // Build HTML structure with virtual scroll container
         this.container.innerHTML = `
       <div class="epg-container" style="position: relative;">
         <div class="epg-time-header">
@@ -466,80 +438,125 @@ class EpgGuide {
             </div>
           `).join('')}
         </div>
-        <div class="epg-channel-rows"></div>
-        <div class="epg-loader" style="height: 50px; display: flex; align-items: center; justify-content: center;">
-          <div class="loading-spinner"></div>
+        <div class="epg-scroll-container" style="overflow-y: auto; max-height: calc(100vh - 200px);">
+          <div class="epg-spacer" style="height: ${totalHeight}px; position: relative;">
+            <div class="epg-channel-rows" style="position: absolute; top: 0; left: 0; right: 0;"></div>
+          </div>
         </div>
       </div>
     `;
 
-        // Get references for batch rendering
+        // Get references for virtual scrolling
+        this.scrollContainer = this.container.querySelector('.epg-scroll-container');
+        this.epgSpacer = this.container.querySelector('.epg-spacer');
         this.epgContainer = this.container.querySelector('.epg-channel-rows');
-        this.epgLoader = this.container.querySelector('.epg-loader');
 
-        // Reset batch state
-        this.currentBatch = 0;
+        // Clear visible rows cache
+        this.visibleRows.clear();
+        this._lastVisibleStart = -1;
+        this._lastVisibleEnd = -1;
 
-        // Set up IntersectionObserver for lazy loading
-        if (this.epgObserver) {
-            this.epgObserver.disconnect();
-        }
-        this.epgObserver = new IntersectionObserver((entries) => {
-            if (entries[0].isIntersecting) {
-                this.renderNextEpgBatch();
-            }
-        }, { rootMargin: '200px' });
-
-        // Render initial batches (render enough to fill viewport)
-        for (let i = 0; i < 3; i++) {
-            this.renderNextEpgBatch();
+        // Remove old scroll handler if exists
+        if (this._scrollHandler) {
+            this.scrollContainer?.removeEventListener('scroll', this._scrollHandler);
         }
 
-        // Start observing loader
-        this.epgObserver.observe(this.epgLoader);
+        // Set up scroll handler for virtual scrolling
+        this._scrollHandler = this.debounce(() => this.updateVisibleRows(), 16); // ~60fps
+        this.scrollContainer.addEventListener('scroll', this._scrollHandler);
+
+        // Initial render of visible rows
+        this.updateVisibleRows();
 
         // Add now indicator
         this.updateNowIndicator();
     }
 
     /**
-     * Render next batch of EPG channel rows
+     * Update visible rows based on scroll position (Virtual Scrolling)
      */
-    renderNextEpgBatch() {
-        const start = this.currentBatch * this.batchSize;
-        const end = start + this.batchSize;
-        const batch = this.filteredChannels.slice(start, end);
+    updateVisibleRows() {
+        if (!this.scrollContainer || !this.epgContainer) return;
 
-        if (batch.length === 0) {
-            this.epgLoader.style.display = 'none';
+        const scrollTop = this.scrollContainer.scrollTop;
+        const viewportHeight = this.scrollContainer.clientHeight;
+
+        // Calculate visible range
+        const startIndex = Math.max(0, Math.floor(scrollTop / this.rowHeight) - this.bufferRows);
+        const endIndex = Math.min(
+            this.filteredChannels.length - 1,
+            Math.ceil((scrollTop + viewportHeight) / this.rowHeight) + this.bufferRows
+        );
+
+        // Skip if nothing changed
+        if (startIndex === this._lastVisibleStart && endIndex === this._lastVisibleEnd) {
             return;
         }
 
-        let html = '';
-        for (const { epgChannel, sourceChannel } of batch) {
-            const isFavorite = this.favorites.has(`${sourceChannel.sourceId}:${sourceChannel.id}`);
+        this._lastVisibleStart = startIndex;
+        this._lastVisibleEnd = endIndex;
 
-            // Get programs if EPG data exists
-            let channelProgrammes = [];
-            if (epgChannel) {
-                channelProgrammes = this.programmes
-                    .filter(p => p.channelId === epgChannel.id)
-                    .filter(p => {
-                        const start = new Date(p.start);
-                        const stop = new Date(p.stop);
-                        return start < this.endTime && stop > this.startTime;
-                    })
-                    .sort((a, b) => new Date(a.start) - new Date(b.start));
+        // Determine which rows to add and remove
+        const newVisibleSet = new Set();
+        for (let i = startIndex; i <= endIndex; i++) {
+            newVisibleSet.add(i);
+        }
+
+        // Remove rows that are no longer visible
+        for (const [index, row] of this.visibleRows) {
+            if (!newVisibleSet.has(index)) {
+                row.remove();
+                this.visibleRows.delete(index);
             }
+        }
 
-            // Fallback values if EPG channel is missing
-            const logo = this.getProxiedImageUrl(sourceChannel.tvgLogo || (epgChannel && epgChannel.icon));
-            const name = sourceChannel.name || (epgChannel && epgChannel.name);
+        // Add new visible rows
+        for (let i = startIndex; i <= endIndex; i++) {
+            if (!this.visibleRows.has(i) && i < this.filteredChannels.length) {
+                const row = this.createChannelRow(i);
+                this.visibleRows.set(i, row);
+                this.epgContainer.appendChild(row);
+            }
+        }
+    }
 
-            html += `
-        <div class="epg-channel-row" 
-             data-channel-id="${sourceChannel.id}" 
-             data-source-id="${sourceChannel.sourceId}">
+    /**
+     * Create a channel row element for virtual scrolling
+     */
+    createChannelRow(index) {
+        const { epgChannel, sourceChannel } = this.filteredChannels[index];
+        const isFavorite = this.favorites.has(`${sourceChannel.sourceId}:${sourceChannel.id}`);
+
+        // Get programs if EPG data exists
+        let channelProgrammes = [];
+        if (epgChannel) {
+            channelProgrammes = this.programmes
+                .filter(p => p.channelId === epgChannel.id)
+                .filter(p => {
+                    const start = new Date(p.start);
+                    const stop = new Date(p.stop);
+                    return start < this.endTime && stop > this.startTime;
+                })
+                .sort((a, b) => new Date(a.start) - new Date(b.start));
+        }
+
+        // Fallback values if EPG channel is missing
+        const logo = this.getProxiedImageUrl(sourceChannel.tvgLogo || (epgChannel && epgChannel.icon));
+        const name = sourceChannel.name || (epgChannel && epgChannel.name);
+
+        const row = document.createElement('div');
+        row.className = 'epg-channel-row';
+        row.dataset.channelId = sourceChannel.id;
+        row.dataset.sourceId = sourceChannel.sourceId;
+        row.dataset.index = index;
+        // Position absolutely for virtual scrolling
+        row.style.position = 'absolute';
+        row.style.top = `${index * this.rowHeight}px`;
+        row.style.left = '0';
+        row.style.right = '0';
+        row.style.height = `${this.rowHeight}px`;
+
+        row.innerHTML = `
           <div class="epg-channel-info">
             <button class="favorite-btn ${isFavorite ? 'active' : ''}" title="${isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}">
               ${isFavorite ? Icons.favorite : Icons.favoriteOutline}
@@ -552,25 +569,10 @@ class EpgGuide {
           <div class="epg-programs">
             ${this.renderProgrammes(channelProgrammes, this.startTime, this.endTime)}
           </div>
-        </div>
-      `;
-        }
+        `;
 
-        // Append to container
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        while (tempDiv.firstElementChild) {
-            const row = tempDiv.firstElementChild;
-            this.attachRowListeners(row);
-            this.epgContainer.appendChild(row);
-        }
-
-        this.currentBatch++;
-
-        // Hide loader if no more batches
-        if (end >= this.filteredChannels.length) {
-            this.epgLoader.style.display = 'none';
-        }
+        this.attachRowListeners(row);
+        return row;
     }
 
     /**

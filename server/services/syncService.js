@@ -1,5 +1,5 @@
 const { getDb } = require('../db/sqlite');
-const { sources } = require('../db'); // For source config
+const { sources, settings } = require('../db'); // For source config and settings
 const xtreamApi = require('./xtreamApi');
 const m3uParser = require('./m3uParser');
 const epgParser = require('./epgParser');
@@ -8,6 +8,74 @@ const epgParser = require('./epgParser');
 const activeSyncs = new Set(); // sourceId
 
 class SyncService {
+    constructor() {
+        this.lastSyncTime = null; // Track when global sync last completed
+        this._syncTimer = null;   // Server-side sync timer
+        this._currentInterval = null;
+    }
+
+    /**
+     * Get when the last global sync completed
+     */
+    getLastSyncTime() {
+        return this.lastSyncTime;
+    }
+
+    /**
+     * Start the server-side sync timer based on settings
+     * Should be called once on server startup after initial sync
+     */
+    async startSyncTimer() {
+        // Get interval from settings
+        const currentSettings = await settings.get();
+        const intervalHours = parseInt(currentSettings.epgRefreshInterval) || 24;
+
+        // If interval is 0, don't start timer (manual only mode)
+        if (intervalHours <= 0) {
+            console.log('[Sync] Auto-sync disabled (manual only mode)');
+            this.stopSyncTimer();
+            this._currentInterval = 0;
+            return;
+        }
+
+        const intervalMs = intervalHours * 60 * 60 * 1000;
+
+        // Don't restart if interval hasn't changed
+        if (this._currentInterval === intervalHours && this._syncTimer) {
+            return;
+        }
+
+        // Clear existing timer
+        this.stopSyncTimer();
+
+        console.log(`[Sync] Starting server-side sync timer: every ${intervalHours} hours`);
+
+        this._syncTimer = setInterval(async () => {
+            console.log('[Sync] Scheduled sync triggered');
+            await this.syncAll();
+        }, intervalMs);
+
+        this._currentInterval = intervalHours;
+    }
+
+    /**
+     * Stop the server-side sync timer
+     */
+    stopSyncTimer() {
+        if (this._syncTimer) {
+            clearInterval(this._syncTimer);
+            this._syncTimer = null;
+        }
+    }
+
+    /**
+     * Restart the sync timer with updated settings
+     * Called when sync interval setting changes
+     */
+    async restartSyncTimer() {
+        await this.startSyncTimer();
+    }
+
     /**
      * Sync all enabled sources
      */
@@ -21,7 +89,8 @@ class SyncService {
                     await this.syncSource(source.id);
                 }
             }
-            console.log('[Sync] Global sync completed');
+            this.lastSyncTime = new Date();
+            console.log('[Sync] Global sync completed at', this.lastSyncTime.toISOString());
         } catch (err) {
             console.error('[Sync] Global sync failed:', err);
         }
@@ -164,9 +233,11 @@ class SyncService {
             }
         });
 
-        const BATCH_SIZE = 500;
+        // Reduced batch size for better event loop interleaving
+        const BATCH_SIZE = 100;
         for (let i = 0; i < categories.length; i += BATCH_SIZE) {
             insertBatch(categories.slice(i, i + BATCH_SIZE));
+            // Yield to event loop between batches to allow other requests
             await new Promise(resolve => setImmediate(resolve));
         }
 
@@ -244,9 +315,11 @@ class SyncService {
             }
         });
 
-        const BATCH_SIZE = 500;
+        // Reduced batch size for better event loop interleaving
+        const BATCH_SIZE = 100;
         for (let i = 0; i < items.length; i += BATCH_SIZE) {
             insertBatch(items.slice(i, i + BATCH_SIZE));
+            // Yield to event loop between batches to allow other requests
             await new Promise(resolve => setImmediate(resolve));
         }
 
