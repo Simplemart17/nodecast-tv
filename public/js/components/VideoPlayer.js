@@ -141,123 +141,185 @@ class VideoPlayer {
     /**
      * Initialize custom video controls for mobile
      */
+    /**
+     * Initialize custom video controls
+     */
     initCustomControls() {
+        // Elements
+        this.controlsOverlay = document.getElementById('player-controls-overlay');
+        this.centerPlayBtn = document.getElementById('player-center-play');
+        this.loadingSpinner = document.getElementById('player-loading');
+
         const btnPlay = document.getElementById('btn-play');
         const btnMute = document.getElementById('btn-mute');
-        const btnPip = document.getElementById('btn-pip');
         const btnFullscreen = document.getElementById('btn-fullscreen');
-        const controls = document.getElementById('video-controls');
+        const volumeSlider = document.getElementById('player-volume');
+        const channelNameEl = document.getElementById('player-channel-name');
 
-        if (!btnPlay || !btnMute || !btnPip || !btnFullscreen || !controls) return;
+        if (!this.controlsOverlay) return;
 
-        // Always use native controls
-        this.video.controls = true;
+        // Disable native controls
+        this.video.controls = false;
 
-        // Play/Pause button
-        btnPlay.addEventListener('click', () => {
+        // Initial State: Hide all overlay elements until content is loaded
+        this.loadingSpinner?.classList.remove('show');
+        this.centerPlayBtn?.classList.remove('show');
+        this.controlsOverlay?.classList.add('hidden');
+
+        // Play/Pause toggle
+        const togglePlay = () => {
             if (this.video.paused) {
                 this.video.play();
             } else {
                 this.video.pause();
             }
+        };
+
+        btnPlay?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePlay();
         });
 
-        // Update play/pause icon
-        const updatePlayIcon = () => {
-            const icon = btnPlay.querySelector('.icon');
-            if (this.video.paused) {
-                icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
-                btnPlay.title = 'Play';
-            } else {
-                icon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-                btnPlay.title = 'Pause';
+        this.centerPlayBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePlay();
+        });
+
+        // Update play/pause UI
+        const updatePlayUI = () => {
+            const isPaused = this.video.paused;
+
+            // Center button
+            this.centerPlayBtn?.classList.toggle('show', isPaused);
+
+            // Bottom bar button
+            const iconPlay = btnPlay?.querySelector('.icon-play');
+            const iconPause = btnPlay?.querySelector('.icon-pause');
+
+            if (iconPlay && iconPause) {
+                iconPlay.classList.toggle('hidden', !isPaused);
+                iconPause.classList.toggle('hidden', isPaused);
             }
         };
 
-        this.video.addEventListener('play', updatePlayIcon);
-        this.video.addEventListener('pause', updatePlayIcon);
+        this.video.addEventListener('play', updatePlayUI);
+        this.video.addEventListener('pause', updatePlayUI);
 
-        // Mute/Unmute button
-        btnMute.addEventListener('click', () => {
-            this.video.muted = !this.video.muted;
-            btnMute.classList.toggle('muted', this.video.muted);
+        // Loading spinner
+        this.video.addEventListener('waiting', () => {
+            this.loadingSpinner?.classList.add('show');
+            this.centerPlayBtn?.classList.remove('show');
+        });
 
-            // Update icon
-            const icon = btnMute.querySelector('.icon');
+        this.video.addEventListener('canplay', () => {
+            this.loadingSpinner?.classList.remove('show');
+            if (this.video.paused) {
+                this.centerPlayBtn?.classList.add('show');
+            }
+        });
+
+        // Mute/Volume
+        const updateVolumeUI = () => {
+            const isMuted = this.video.muted || this.video.volume === 0;
+            const iconVol = btnMute?.querySelector('.icon-vol');
+            const iconMuted = btnMute?.querySelector('.icon-muted');
+
+            if (iconVol && iconMuted) {
+                iconVol.classList.toggle('hidden', isMuted);
+                iconMuted.classList.toggle('hidden', !isMuted);
+            }
+
+            if (volumeSlider) {
+                volumeSlider.value = this.video.muted ? 0 : Math.round(this.video.volume * 100);
+            }
+        };
+
+        btnMute?.addEventListener('click', (e) => {
+            e.stopPropagation();
             if (this.video.muted) {
-                icon.innerHTML = '<path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>';
+                this.video.muted = false;
+                this.video.volume = (parseInt(volumeSlider?.value || 80) / 100) || 0.8;
             } else {
-                icon.innerHTML = '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
+                this.video.muted = true;
             }
+            updateVolumeUI();
         });
 
-        // Picture-in-Picture button
-        if (document.pictureInPictureEnabled) {
-            btnPip.addEventListener('click', async () => {
-                try {
-                    if (document.pictureInPictureElement) {
-                        await document.exitPictureInPicture();
-                    } else {
-                        await this.video.requestPictureInPicture();
-                    }
-                } catch (err) {
-                    console.error('PiP error:', err);
-                }
-            });
-        } else {
-            btnPip.style.display = 'none';
-        }
-
-        // Fullscreen button
-        btnFullscreen.addEventListener('click', () => {
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            } else {
-                this.container.requestFullscreen().catch(err => {
-                    console.error('Fullscreen error:', err);
-                });
-            }
+        volumeSlider?.addEventListener('input', (e) => {
+            e.stopPropagation();
+            const val = parseInt(e.target.value);
+            this.video.volume = val / 100;
+            this.video.muted = val === 0;
+            updateVolumeUI();
         });
 
-        // Show controls on tap/touch for mobile (only hide after interaction)
-        if (isMobile) {
-            let controlsTimeout;
-            const hideControls = () => {
-                clearTimeout(controlsTimeout);
-                controlsTimeout = setTimeout(() => {
-                    controls.classList.remove('show');
-                }, 4000);
-            };
+        this.video.addEventListener('volumechange', updateVolumeUI);
 
-            const showControls = () => {
-                controls.classList.add('show');
-                hideControls();
-            };
-
-            this.video.addEventListener('click', showControls);
-            this.video.addEventListener('touchstart', showControls);
-
-            // Keep controls visible when video is paused
-            this.video.addEventListener('pause', () => {
-                controls.classList.add('show');
-                clearTimeout(controlsTimeout);
-            });
-
-            this.video.addEventListener('play', () => {
-                hideControls();
-            });
-        }
-
-        // Update fullscreen icon
-        document.addEventListener('fullscreenchange', () => {
-            const icon = btnFullscreen.querySelector('.icon');
-            if (document.fullscreenElement) {
-                icon.innerHTML = '<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>';
-            } else {
-                icon.innerHTML = '<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>';
-            }
+        // Fullscreen
+        btnFullscreen?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleFullscreen();
         });
+
+        this.container.addEventListener('dblclick', () => this.toggleFullscreen());
+
+        // Overlay Auto-hide Logic
+        let overlayTimeout;
+
+        const showOverlay = () => {
+            this.controlsOverlay.classList.remove('hidden');
+            this.container.style.cursor = 'default';
+            resetOverlayTimer();
+        };
+
+        const hideOverlay = () => {
+            if (!this.video.paused) {
+                this.controlsOverlay.classList.add('hidden');
+                this.container.style.cursor = 'none';
+            }
+        };
+
+        const resetOverlayTimer = () => {
+            clearTimeout(overlayTimeout);
+            if (!this.video.paused) {
+                overlayTimeout = setTimeout(hideOverlay, 3000);
+            }
+        };
+
+        this.container.addEventListener('mousemove', showOverlay);
+        this.container.addEventListener('click', showOverlay);
+        this.container.addEventListener('touchstart', showOverlay);
+
+        this.video.addEventListener('play', resetOverlayTimer);
+        this.video.addEventListener('pause', showOverlay);
+
+        // Update Title when channel changes
+        window.addEventListener('channelChanged', (e) => {
+            if (channelNameEl && e.detail) {
+                channelNameEl.textContent = e.detail.name || e.detail.tvgName || 'Live TV';
+            }
+            showOverlay();
+        });
+
+        // Initial state
+        updatePlayUI();
+        updateVolumeUI();
     }
+
+    /**
+     * Toggle fullscreen mode
+     */
+    toggleFullscreen() {
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            this.container.requestFullscreen().catch(err => {
+                console.error('Fullscreen error:', err);
+            });
+        }
+    }
+
+
 
     init() {
         // Apply default/remembered volume
@@ -461,6 +523,10 @@ class VideoPlayer {
 
             // Hide "select a channel" overlay
             this.overlay.classList.add('hidden');
+
+            // Show custom controls overlay
+            this.controlsOverlay?.classList.remove('hidden');
+            this.loadingSpinner?.classList.add('show');
 
             // Determine if HLS or direct stream
             this.currentUrl = streamUrl;
@@ -766,6 +832,13 @@ class VideoPlayer {
         this.video.pause();
         this.video.src = '';
         this.video.load();
+
+        // Reset UI to idle state
+        this.overlay.classList.remove('hidden'); // Show "Select a channel"
+        this.controlsOverlay?.classList.add('hidden'); // Hide controls
+        this.loadingSpinner?.classList.remove('show');
+        this.centerPlayBtn?.classList.remove('show');
+        this.nowPlaying.classList.add('hidden');
     }
 
     /**

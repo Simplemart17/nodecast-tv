@@ -3293,6 +3293,35 @@ kbd {
   height: 40px;
 }
 
+/* Loading Spinner */
+.watch-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+  z-index: 15;
+}
+
+.watch-loading.show {
+  display: block;
+}
+
+.watch-loading .loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Bottom Bar */
 .watch-bottom-bar {
   padding: var(--space-md) var(--space-lg);
@@ -3382,6 +3411,68 @@ kbd {
   height: 24px;
 }
 
+/* Captions Menu */
+.watch-captions-wrapper {
+  position: relative;
+}
+
+.watch-captions-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: var(--space-sm);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  min-width: 160px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+}
+
+.watch-captions-menu.hidden {
+  display: none;
+}
+
+.captions-menu-title {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.captions-menu-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.captions-option {
+  display: block;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  color: var(--color-text-primary);
+  text-align: left;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.captions-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.captions-option.active {
+  color: var(--color-accent);
+}
+
+.captions-option.active::before {
+  content: "✓ ";
+}
+
 .watch-btn-lg {
   width: 64px;
   height: 64px;
@@ -3433,7 +3524,7 @@ kbd {
 /* Scroll Hint */
 .watch-scroll-hint {
   position: absolute;
-  bottom: 100px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

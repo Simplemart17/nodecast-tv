@@ -28,6 +28,7 @@ class WatchPage {
         this.timeCurrent = document.getElementById('watch-time-current');
         this.timeTotal = document.getElementById('watch-time-total');
         this.scrollHint = document.getElementById('watch-scroll-hint');
+        this.loadingSpinner = document.getElementById('watch-loading');
 
         // Next episode
         this.nextEpisodePanel = document.getElementById('watch-next-episode');
@@ -53,6 +54,11 @@ class WatchPage {
         this.episodesSection = document.getElementById('watch-episodes');
         this.seasonsContainer = document.getElementById('watch-seasons');
 
+        // Captions
+        this.captionsBtn = document.getElementById('watch-captions-btn');
+        this.captionsMenu = document.getElementById('watch-captions-menu');
+        this.captionsList = document.getElementById('watch-captions-list');
+
         // State
         this.hls = null;
         this.content = null;
@@ -62,6 +68,7 @@ class WatchPage {
         this.currentEpisode = null;
         this.isFavorite = false;
         this.returnPage = null;
+        this.captionsMenuOpen = false;
 
         // Overlay timer
         this.overlayTimeout = null;
@@ -105,6 +112,8 @@ class WatchPage {
         this.video?.addEventListener('pause', () => this.onPause());
         this.video?.addEventListener('ended', () => this.onEnded());
         this.video?.addEventListener('error', (e) => this.onError(e));
+        this.video?.addEventListener('waiting', () => this.showLoading());
+        this.video?.addEventListener('canplay', () => this.hideLoading());
 
         // Overlay auto-hide
         const watchSection = document.querySelector('.watch-video-section');
@@ -121,6 +130,19 @@ class WatchPage {
         // Next episode buttons
         this.nextPlayNowBtn?.addEventListener('click', () => this.playNextEpisode());
         this.nextCancelBtn?.addEventListener('click', () => this.cancelNextEpisode());
+
+        // Captions toggle
+        this.captionsBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleCaptionsMenu();
+        });
+
+        // Close captions menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (this.captionsMenuOpen && !this.captionsMenu?.contains(e.target) && e.target !== this.captionsBtn) {
+                this.closeCaptionsMenu();
+            }
+        });
 
         // Hide scroll hint after scrolling
         const watchPage = document.getElementById('page-watch');
@@ -186,6 +208,9 @@ class WatchPage {
     async loadVideo(url) {
         // Stop any existing playback
         this.stop();
+
+        // Show loading spinner
+        this.showLoading();
 
         // Get settings for proxy/transcode
         let settings = {};
@@ -383,7 +408,11 @@ class WatchPage {
     }
 
     onError(e) {
-        console.error('Video error:', e);
+        // Only log actual fatal errors, not benign stream recovery events
+        const error = this.video?.error;
+        if (error && error.code) {
+            console.error('[WatchPage] Video error:', error.code, error.message);
+        }
     }
 
     updateVolumeUI() {
@@ -401,6 +430,87 @@ class WatchPage {
             return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
         return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    // === Loading Spinner ===
+
+    showLoading() {
+        this.loadingSpinner?.classList.add('show');
+        this.centerPlayBtn?.classList.remove('show');
+    }
+
+    hideLoading() {
+        this.loadingSpinner?.classList.remove('show');
+    }
+
+    // === Captions ===
+
+    toggleCaptionsMenu() {
+        if (this.captionsMenuOpen) {
+            this.closeCaptionsMenu();
+        } else {
+            this.updateCaptionsTracks();
+            this.captionsMenu?.classList.remove('hidden');
+            this.captionsMenuOpen = true;
+        }
+    }
+
+    closeCaptionsMenu() {
+        this.captionsMenu?.classList.add('hidden');
+        this.captionsMenuOpen = false;
+    }
+
+    updateCaptionsTracks() {
+        if (!this.captionsList || !this.video) return;
+
+        // Build list of available text tracks
+        const tracks = this.video.textTracks;
+        let html = '<button class="captions-option" data-index="-1">Off</button>';
+
+        for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+            if (track.kind === 'subtitles' || track.kind === 'captions') {
+                const label = track.label || track.language || `Track ${i + 1}`;
+                const isActive = track.mode === 'showing';
+                html += `<button class="captions-option ${isActive ? 'active' : ''}" data-index="${i}">${label}</button>`;
+            }
+        }
+
+        // Check if any track is active, if not mark "Off" as active
+        let anyActive = false;
+        for (let i = 0; i < tracks.length; i++) {
+            if (tracks[i].mode === 'showing') anyActive = true;
+        }
+        if (!anyActive) {
+            html = html.replace('class="captions-option"', 'class="captions-option active"');
+        }
+
+        this.captionsList.innerHTML = html;
+
+        // Add click handlers
+        this.captionsList.querySelectorAll('.captions-option').forEach(btn => {
+            btn.addEventListener('click', () => this.selectCaptionTrack(parseInt(btn.dataset.index)));
+        });
+    }
+
+    selectCaptionTrack(index) {
+        if (!this.video) return;
+
+        const tracks = this.video.textTracks;
+
+        // Disable all tracks
+        for (let i = 0; i < tracks.length; i++) {
+            tracks[i].mode = 'hidden';
+        }
+
+        // Enable selected track
+        if (index >= 0 && index < tracks.length) {
+            tracks[index].mode = 'showing';
+        }
+
+        // Update UI
+        this.updateCaptionsTracks();
+        this.closeCaptionsMenu();
     }
 
     // === Overlay Auto-Hide ===
