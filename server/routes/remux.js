@@ -26,6 +26,7 @@ router.get('/', (req, res) => {
     const args = [
         '-hide_banner',
         '-loglevel', 'warning',
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         // Low-latency startup: reduce probe/analyze time for faster first bytes
         '-probesize', '32768',
         '-analyzeduration', '500000', // 0.5 seconds - enough to detect audio

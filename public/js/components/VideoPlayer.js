@@ -676,6 +676,28 @@ class VideoPlayer {
                     const info = await probeRes.json();
                     console.log(`[Player] Probe result: video=${info.video}, audio=${info.audio}, compatible=${info.compatible}`);
 
+                    // Handle subtitles from probe result
+                    // Clear existing remote tracks (from previous streams)
+                    const oldTracks = this.video.querySelectorAll('track');
+                    oldTracks.forEach(t => t.remove());
+
+                    if (info.subtitles && info.subtitles.length > 0) {
+                        console.log(`[Player] Found ${info.subtitles.length} subtitle tracks`);
+                        info.subtitles.forEach(sub => {
+                            const track = document.createElement('track');
+                            track.kind = 'subtitles';
+                            track.label = sub.title;
+                            track.srclang = sub.language;
+                            track.src = `/api/subtitle?url=${encodeURIComponent(streamUrl)}&index=${sub.index}`;
+                            this.video.appendChild(track);
+                        });
+
+                        // Force update of captions menu if it's open
+                        if (this.captionsMenuOpen) {
+                            this.updateCaptionsTracks();
+                        }
+                    }
+
                     if (info.needsTranscode) {
                         // Incompatible audio (AC3/EAC3/DTS) - use transcode
                         console.log('[Player] Auto: Using transcode (incompatible audio)');

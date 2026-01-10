@@ -25,6 +25,7 @@ router.get('/', (req, res) => {
     const args = [
         '-hide_banner',
         '-loglevel', 'warning',
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         // Faster startup - reduced probe/analyze for quicker first bytes
         '-probesize', '2000000', // 2MB (reduced from 5MB)
         '-analyzeduration', '3000000', // 3 seconds (reduced from 10s)

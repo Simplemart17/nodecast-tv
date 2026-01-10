@@ -32,6 +32,7 @@ function probeStream(url, ffprobePath, timeout = 15000) {
     return new Promise((resolve, reject) => {
         const args = [
             '-v', 'error',
+            '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             '-print_format', 'json',
             '-show_streams',
             '-show_format',
@@ -100,6 +101,16 @@ function analyzeProbeResult(probeResult, url) {
     // Check if it's a raw TS stream (not HLS)
     const isRawTs = (container.includes('mpegts') || url.endsWith('.ts')) && !url.includes('.m3u8');
 
+    // Extract subtitle tracks
+    const subtitles = streams
+        .filter(s => s.codec_type === 'subtitle' && s.codec_name !== 'timed_id3' && s.codec_name !== 'bin_data')
+        .map(s => ({
+            index: s.index,
+            language: s.tags?.language || 'und',
+            title: s.tags?.title || s.tags?.language || `Track ${s.index}`,
+            codec: s.codec_name
+        }));
+
     // Determine what processing is needed
     // 1. Incompatible audio -> Transcode (highest priority)
     const needsTranscode = !audioOk;
@@ -116,7 +127,8 @@ function analyzeProbeResult(probeResult, url) {
         container: container,
         compatible: compatible,
         needsRemux: needsRemux,
-        needsTranscode: needsTranscode
+        needsTranscode: needsTranscode,
+        subtitles: subtitles
     };
 }
 

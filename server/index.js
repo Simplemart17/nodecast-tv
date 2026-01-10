@@ -89,6 +89,7 @@ app.use('/api/favorites', require('./routes/favorites'));
 app.use('/api/transcode', require('./routes/transcode'));
 app.use('/api/remux', require('./routes/remux'));
 app.use('/api/probe', require('./routes/probe'));
+app.use('/api/subtitle', require('./routes/subtitle'));
 app.use('/api/settings', require('./routes/settings'));
 
 // SPA fallback - serve index.html for all non-API routes
