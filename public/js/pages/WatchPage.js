@@ -229,6 +229,41 @@ class WatchPage {
         const isRawTs = url.includes('.ts') && !url.includes('.m3u8');
         const isDirectVideo = url.includes('.mp4') || url.includes('.mkv') || url.includes('.avi');
 
+        // Priority 0: Auto Transcode (Smart) - probe first, then decide
+        if (settings.autoTranscode) {
+            console.log('[WatchPage] Auto Transcode enabled. Probing stream...');
+            try {
+                const probeRes = await fetch(`/api/probe?url=${encodeURIComponent(url)}`);
+                const info = await probeRes.json();
+                console.log(`[WatchPage] Probe result: video=${info.video}, audio=${info.audio}, compatible=${info.compatible}`);
+
+                if (info.needsTranscode) {
+                    console.log('[WatchPage] Auto: Using transcode (incompatible audio)');
+                    const finalUrl = `/api/transcode?url=${encodeURIComponent(url)}`;
+                    this.video.src = finalUrl;
+                    this.video.play().catch(e => {
+                        if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
+                    });
+                    this.setVolumeFromStorage();
+                    return;
+                } else if (info.needsRemux) {
+                    console.log('[WatchPage] Auto: Using remux (.ts container)');
+                    const finalUrl = `/api/remux?url=${encodeURIComponent(url)}`;
+                    this.video.src = finalUrl;
+                    this.video.play().catch(e => {
+                        if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
+                    });
+                    this.setVolumeFromStorage();
+                    return;
+                }
+                // Compatible - fall through to normal playback
+                console.log('[WatchPage] Auto: Using normal playback (compatible)');
+            } catch (err) {
+                console.warn('[WatchPage] Probe failed, using normal playback:', err.message);
+                // Continue with normal playback on probe failure
+            }
+        }
+
         // Priority 1: Force Transcode - route through FFmpeg
         if (settings.forceTranscode) {
             console.log('[WatchPage] Force Transcode enabled');

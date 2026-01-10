@@ -52,7 +52,33 @@ function findFFmpeg() {
     }
 }
 
+function findFFprobe() {
+    // Try system ffprobe first
+    try {
+        execSync('ffprobe -version', { stdio: 'ignore' });
+        console.log('FFprobe binary configured at: ffprobe (system)');
+        return 'ffprobe';
+    } catch (e) {
+        // Not found in system
+    }
+
+    // Try @ffprobe-installer/ffprobe package
+    try {
+        const ffprobePath = require('@ffprobe-installer/ffprobe').path;
+        if (ffprobePath) {
+            console.log('FFprobe binary configured at:', ffprobePath);
+            return ffprobePath;
+        }
+    } catch (err) {
+        // Package not available
+    }
+
+    console.warn('FFprobe not available - auto transcode will fallback to always transcode');
+    return null;
+}
+
 app.locals.ffmpegPath = findFFmpeg();
+app.locals.ffprobePath = findFFprobe();
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -62,6 +88,7 @@ app.use('/api/channels', require('./routes/channels'));
 app.use('/api/favorites', require('./routes/favorites'));
 app.use('/api/transcode', require('./routes/transcode'));
 app.use('/api/remux', require('./routes/remux'));
+app.use('/api/probe', require('./routes/probe'));
 app.use('/api/settings', require('./routes/settings'));
 
 // SPA fallback - serve index.html for all non-API routes

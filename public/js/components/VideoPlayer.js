@@ -45,6 +45,7 @@ class VideoPlayer {
             forceProxy: false,
             forceTranscode: false,
             forceRemux: false,
+            autoTranscode: true,
             streamFormat: 'm3u8',
             epgRefreshInterval: '24'
         };
@@ -667,10 +668,55 @@ class VideoPlayer {
             // Determine if HLS or direct stream
             this.currentUrl = streamUrl;
 
+            // CHECK: Auto Transcode (Smart) - probe first, then decide
+            if (this.settings.autoTranscode) {
+                console.log('[Player] Auto Transcode enabled. Probing stream...');
+                try {
+                    const probeRes = await fetch(`/api/probe?url=${encodeURIComponent(streamUrl)}`);
+                    const info = await probeRes.json();
+                    console.log(`[Player] Probe result: video=${info.video}, audio=${info.audio}, compatible=${info.compatible}`);
+
+                    if (info.needsTranscode) {
+                        // Incompatible audio (AC3/EAC3/DTS) - use transcode
+                        console.log('[Player] Auto: Using transcode (incompatible audio)');
+                        const transcodeUrl = `/api/transcode?url=${encodeURIComponent(streamUrl)}`;
+                        this.currentUrl = transcodeUrl;
+                        this.video.src = transcodeUrl;
+                        this.video.play().catch(e => {
+                            if (e.name !== 'AbortError') console.log('[Player] Autoplay prevented:', e);
+                        });
+                        this.updateNowPlaying(channel);
+                        this.showNowPlayingOverlay();
+                        this.fetchEpgData(channel);
+                        window.dispatchEvent(new CustomEvent('channelChanged', { detail: channel }));
+                        return;
+                    } else if (info.needsRemux) {
+                        // Raw .ts container - use remux
+                        console.log('[Player] Auto: Using remux (.ts container)');
+                        const remuxUrl = `/api/remux?url=${encodeURIComponent(streamUrl)}`;
+                        this.currentUrl = remuxUrl;
+                        this.video.src = remuxUrl;
+                        this.video.play().catch(e => {
+                            if (e.name !== 'AbortError') console.log('[Player] Autoplay prevented:', e);
+                        });
+                        this.updateNowPlaying(channel);
+                        this.showNowPlayingOverlay();
+                        this.fetchEpgData(channel);
+                        window.dispatchEvent(new CustomEvent('channelChanged', { detail: channel }));
+                        return;
+                    }
+                    // Compatible - fall through to normal HLS.js path
+                    console.log('[Player] Auto: Using HLS.js (compatible)');
+                } catch (err) {
+                    console.warn('[Player] Probe failed, using normal playback:', err.message);
+                    // Continue with normal playback on probe failure
+                }
+            }
+
             // CHECK: Force Transcode Priority - transcoded streams bypass HLS.js
             if (this.settings.forceTranscode) {
                 console.log('[Player] Force Transcode enabled. Routing through ffmpeg...');
-                const transcodeUrl = this.getTranscodeUrl(streamUrl);
+                const transcodeUrl = `/api/transcode?url=${encodeURIComponent(streamUrl)}`;
                 this.currentUrl = transcodeUrl;
 
                 // Transcoded streams are fragmented MP4 - play directly with <video> element

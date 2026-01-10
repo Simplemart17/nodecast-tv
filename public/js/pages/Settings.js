@@ -34,6 +34,7 @@ class SettingsPage {
         const forceProxyToggle = document.getElementById('setting-force-proxy');
         const forceTranscodeToggle = document.getElementById('setting-force-transcode');
         const forceRemuxToggle = document.getElementById('setting-force-remux');
+        const autoTranscodeToggle = document.getElementById('setting-auto-transcode');
 
         // Load current settings
         if (this.app.player?.settings) {
@@ -51,6 +52,9 @@ class SettingsPage {
             }
             if (forceRemuxToggle) {
                 forceRemuxToggle.checked = this.app.player.settings.forceRemux || false;
+            }
+            if (autoTranscodeToggle) {
+                autoTranscodeToggle.checked = this.app.player.settings.autoTranscode || false;
             }
         }
 
@@ -103,6 +107,12 @@ class SettingsPage {
         // Force remux toggle
         forceRemuxToggle?.addEventListener('change', () => {
             this.app.player.settings.forceRemux = forceRemuxToggle.checked;
+            this.app.player.saveSettings();
+        });
+
+        // Auto transcode (smart) toggle
+        autoTranscodeToggle?.addEventListener('change', () => {
+            this.app.player.settings.autoTranscode = autoTranscodeToggle.checked;
             this.app.player.saveSettings();
         });
 
@@ -271,6 +281,7 @@ class SettingsPage {
             const forceProxyToggle = document.getElementById('setting-force-proxy');
             const forceTranscodeToggle = document.getElementById('setting-force-transcode');
             const forceRemuxToggle = document.getElementById('setting-force-remux');
+            const autoTranscodeToggle = document.getElementById('setting-auto-transcode');
             const epgRefreshSelect = document.getElementById('epg-refresh-interval');
             const streamFormatSelect = document.getElementById('setting-stream-format');
 
@@ -283,6 +294,7 @@ class SettingsPage {
             if (forceProxyToggle) forceProxyToggle.checked = s.forceProxy || false;
             if (forceTranscodeToggle) forceTranscodeToggle.checked = s.forceTranscode || false;
             if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
+            if (autoTranscodeToggle) autoTranscodeToggle.checked = s.autoTranscode || false;
             if (epgRefreshSelect) epgRefreshSelect.value = s.epgRefreshInterval || '24';
             if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
         }

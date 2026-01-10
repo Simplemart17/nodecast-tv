@@ -65,6 +65,7 @@ function getDefaultSettings() {
     forceProxy: false,
     forceTranscode: false,
     forceRemux: false,
+    autoTranscode: true,
     streamFormat: 'm3u8',
     epgRefreshInterval: '24'
   };

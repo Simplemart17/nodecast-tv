@@ -40,9 +40,13 @@ router.get('/', (req, res) => {
         '-reconnect_streamed', '1',
         '-reconnect_delay_max', '5',
         '-i', url,
-        // Map all streams explicitly
-        '-map', '0',
-        // Copy ALL streams without re-encoding
+        // STRICT MAPPING: Only map video and audio, ignore subtitles/data/attachments
+        // This prevents remux failure when source container has incompatible subtitle tracks (e.g. MKV -> MP4)
+        '-map', '0:v',
+        '-map', '0:a',
+        // Drop subtitles (-sn) and data (-dn) explicitly
+        '-sn', '-dn',
+        // Copy streams without re-encoding
         '-c', 'copy',
         // NOTE: We intentionally do NOT use -bsf:a aac_adtstoasc here
         // That filter only works for AAC audio and breaks AC3/EAC3/MP3.
