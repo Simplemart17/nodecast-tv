@@ -507,8 +507,8 @@ class SourceManager {
 
             let categoryMap = {};
 
-            if (source.type === 'xtream') {
-                // Run sequentially to avoid overwhelming the provider
+            if (source.type === 'xtream' || source.type === 'm3u') {
+                // Use unified Xtream API endpoints - backend supports both source types
                 // Use includeHidden to show ALL items in the content manager
                 const categories = await API.proxy.xtream.liveCategories(sourceId, { includeHidden: true });
                 const streams = await API.proxy.xtream.liveStreams(sourceId, null, { includeHidden: true });
@@ -517,9 +517,6 @@ class SourceManager {
                 categories.forEach(cat => {
                     categoryMap[cat.category_id] = cat.category_name;
                 });
-            } else if (source.type === 'm3u') {
-                const m3uData = await API.proxy.m3u.get(sourceId, { includeHidden: true });
-                channels = m3uData.channels || [];
             }
 
             // Get currently hidden items
@@ -531,16 +528,14 @@ class SourceManager {
             const groupMap = {}; // key: categoryId, value: { name, categoryId, items }
             channels.forEach(ch => {
                 let groupName = 'Uncategorized';
-                let categoryId = null;
-                if (source.type === 'xtream') {
-                    categoryId = ch.category_id;
-                    if (categoryId && categoryMap[categoryId]) {
-                        groupName = categoryMap[categoryId];
-                    }
-                } else {
-                    // For M3U, category_id might be the group name itself
-                    groupName = ch.category_name || ch.groupTitle || 'Uncategorized';
-                    categoryId = groupName; // M3U uses name as ID
+                let categoryId = ch.category_id;
+
+                // Look up category name from map (works for both Xtream and M3U now)
+                if (categoryId && categoryMap[categoryId]) {
+                    groupName = categoryMap[categoryId];
+                } else if (categoryId) {
+                    // M3U uses category_id as the name itself
+                    groupName = categoryId;
                 }
 
                 const groupKey = categoryId || groupName;
