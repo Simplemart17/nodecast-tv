@@ -238,4 +238,13 @@ class App {
 // Start app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new App();
+
+    // Fetch and display version badge
+    fetch('/api/version')
+        .then(res => res.json())
+        .then(data => {
+            const badge = document.getElementById('version-badge');
+            if (badge && data.version) badge.textContent = `v${data.version}`;
+        })
+        .catch(() => { });
 });

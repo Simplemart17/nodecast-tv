@@ -92,6 +92,12 @@ app.use('/api/probe', require('./routes/probe'));
 app.use('/api/subtitle', require('./routes/subtitle'));
 app.use('/api/settings', require('./routes/settings'));
 
+// Version endpoint
+app.get('/api/version', (req, res) => {
+    const pkg = require('../package.json');
+    res.json({ version: pkg.version });
+});
+
 // SPA fallback - serve index.html for all non-API routes
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
