@@ -252,11 +252,17 @@ class SyncService {
 
     /**
      * Batch save streams (channels, vod, series)
-     * Also purges stale entries that no longer exist in the source
+     * Also purges stale entries that no longer exist in the source (unless skipPurge is true)
+     * @param {number} sourceId - Source ID
+     * @param {string} type - Type of items (live, movie, series)
+     * @param {Array} items - Items to save
+     * @param {Object} options - Options { skipPurge: boolean }
+     * @returns {Set} Set of synced IDs (for external purge if skipPurge was true)
      */
-    async saveStreams(sourceId, type, items) {
-        if (!items || items.length === 0) return;
+    async saveStreams(sourceId, type, items, options = {}) {
+        if (!items || items.length === 0) return new Set();
         const db = getDb();
+        const { skipPurge = false } = options;
 
         // Collect all IDs we're syncing
         const syncedIds = new Set();
@@ -335,33 +341,46 @@ class SyncService {
             await new Promise(resolve => setImmediate(resolve));
         }
 
-        // Purge stale entries that no longer exist in the source
-        // Use temp table approach to avoid SQL parameter limits with large playlists
-        if (syncedIds.size > 0) {
-            db.exec('CREATE TEMP TABLE IF NOT EXISTS synced_ids (id TEXT PRIMARY KEY)');
-            db.exec('DELETE FROM synced_ids');
-
-            const insertTemp = db.prepare('INSERT OR IGNORE INTO synced_ids (id) VALUES (?)');
-            const insertTempBatch = db.transaction((ids) => {
-                for (const id of ids) {
-                    insertTemp.run(id);
-                }
-            });
-            insertTempBatch([...syncedIds]);
-
-            const deleteStmt = db.prepare(`
-                DELETE FROM playlist_items 
-                WHERE source_id = ? AND type = ? 
-                AND id NOT IN (SELECT id FROM synced_ids)
-            `);
-            const deleted = deleteStmt.run(sourceId, type);
-
-            if (deleted.changes > 0) {
-                console.log(`[Sync] Purged ${deleted.changes} stale ${type} items`);
-            }
+        // Purge stale entries (skip if doing batch sync like M3U)
+        if (!skipPurge && syncedIds.size > 0) {
+            await this.purgeStaleItems(sourceId, type, syncedIds);
         }
 
         console.log(`[Sync] Saved ${items.length} ${type} items`);
+        return syncedIds;
+    }
+
+    /**
+     * Purge stale items that are no longer in the source
+     * @param {number} sourceId - Source ID
+     * @param {string} type - Type of items (live, movie, series)
+     * @param {Set} syncedIds - Set of IDs that should be kept
+     */
+    async purgeStaleItems(sourceId, type, syncedIds) {
+        if (!syncedIds || syncedIds.size === 0) return;
+
+        const db = getDb();
+        db.exec('CREATE TEMP TABLE IF NOT EXISTS synced_ids (id TEXT PRIMARY KEY)');
+        db.exec('DELETE FROM synced_ids');
+
+        const insertTemp = db.prepare('INSERT OR IGNORE INTO synced_ids (id) VALUES (?)');
+        const insertTempBatch = db.transaction((ids) => {
+            for (const id of ids) {
+                insertTemp.run(id);
+            }
+        });
+        insertTempBatch([...syncedIds]);
+
+        const deleteStmt = db.prepare(`
+            DELETE FROM playlist_items 
+            WHERE source_id = ? AND type = ? 
+            AND id NOT IN (SELECT id FROM synced_ids)
+        `);
+        const deleted = deleteStmt.run(sourceId, type);
+
+        if (deleted.changes > 0) {
+            console.log(`[Sync] Purged ${deleted.changes} stale ${type} items`);
+        }
     }
 
 
@@ -489,6 +508,7 @@ class SyncService {
         logMemory();
 
         const allGroups = new Set();
+        const allSyncedIds = new Set(); // Collect IDs across all batches
         let totalChannels = 0;
         let batchCount = 0;
 
@@ -506,9 +526,10 @@ class SyncService {
                 tvgId: ch.tvgId || null,
             }));
 
-            // Save this batch immediately
+            // Save this batch immediately (skip purge - we'll do it at the end)
             if (playlistItems.length > 0) {
-                await this.saveStreams(source.id, 'live', playlistItems);
+                const batchIds = await this.saveStreams(source.id, 'live', playlistItems, { skipPurge: true });
+                batchIds.forEach(id => allSyncedIds.add(id));
                 totalChannels += playlistItems.length;
             }
 
@@ -524,6 +545,11 @@ class SyncService {
 
         console.log(`[Sync] M3U Parsed: ${totalChannels} channels, ${allGroups.size} groups`);
         logMemory();
+
+        // Purge stale items after all batches are complete
+        if (allSyncedIds.size > 0) {
+            await this.purgeStaleItems(source.id, 'live', allSyncedIds);
+        }
 
         // Save Categories (Groups) at the end
         const categories = Array.from(allGroups).map(name => ({
