@@ -502,21 +502,6 @@
           <!-- Transcoding Tab -->
           <div id="tab-transcode" class="tab-content">
             <div class="settings-section">
-              <h3>Network</h3>
-              <div class="setting-item">
-                <label class="setting-toggle">
-                  <input type="checkbox" id="setting-force-proxy-tc">
-                  <span class="toggle-slider"></span>
-                </label>
-                <div class="setting-info">
-                  <span class="setting-label">Force Backend Proxy</span>
-                  <span class="setting-hint">Route all streams through the server to bypass CORS restrictions. Enable
-                    if streams don't play directly.</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-section">
               <h3>Detected Hardware</h3>
               <div id="hw-info-container" class="hw-info-container">
                 <p class="hint">Loading hardware information...</p>
@@ -662,6 +647,21 @@
                 </div>
                 <input type="text" id="setting-user-agent-custom-tc" class="search-input" style="width: 300px;"
                   placeholder="Custom User-Agent string...">
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>Network</h3>
+              <div class="setting-item">
+                <label class="setting-toggle">
+                  <input type="checkbox" id="setting-force-proxy-tc">
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="setting-info">
+                  <span class="setting-label">Force Backend Proxy</span>
+                  <span class="setting-hint">Route all streams through the server to bypass CORS restrictions. Enable if
+                    streams don't play directly.</span>
+                </div>
               </div>
             </div>
           </div>
