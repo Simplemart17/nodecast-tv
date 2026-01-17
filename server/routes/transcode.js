@@ -29,7 +29,7 @@ transcodeSession.startCleanupInterval();
  * Body: { url: string, seekOffset?: number }
  */
 router.post('/session', async (req, res) => {
-    const { url, seekOffset } = req.body;
+    const { url, seekOffset, videoMode, videoCodec } = req.body;
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
@@ -46,7 +46,9 @@ router.post('/session', async (req, res) => {
             seekOffset: seekOffset || 0,
             hwEncoder: settings.hwEncoder || 'software',
             maxResolution: settings.maxResolution || '1080p',
-            quality: settings.quality || 'medium'
+            quality: settings.quality || 'medium',
+            videoMode: videoMode, // 'copy' or 'encode'
+            videoCodec: videoCodec // 'h264', 'hevc', etc.
         });
 
         await session.start();

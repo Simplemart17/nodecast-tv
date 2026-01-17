@@ -3314,6 +3314,24 @@ kbd {
   gap: var(--space-md);
   padding: var(--space-lg);
   padding-top: calc(var(--space-lg) + var(--safe-area-inset-top));
+  pointer-events: none;
+  z-index: 20;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.watch-top-bar>* {
+  pointer-events: auto;
+}
+
+/* Live TV Header: Left Title & Right Status */
+.watch-top-bar.live-header {
+  justify-content: space-between;
+}
+
+/* VOD Header: Spaced (Back Btn - Title - Status) */
+.watch-top-bar.vod-header {
+  justify-content: space-between;
 }
 
 .watch-back-btn {
@@ -4072,4 +4090,55 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Transcode Status Indicator */
+.transcode-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-left: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.3s ease;
+}
+
+.transcode-status.transcoding {
+  background: rgba(255, 68, 68, 0.8);
+  /* Red for Transcoding */
+  box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+}
+
+.transcode-status.remuxing {
+  background: rgba(255, 153, 0, 0.8);
+  /* Orange for Remux */
+}
+
+.transcode-status.direct {
+  background: rgba(76, 175, 80, 0.8);
+  /* Green for Direct */
+}
+
+.transcode-status.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Watch Header Bar (Title + Transcode Status) */
+/* Moved to original definition around line 3311 */
+
+.watch-title-overlay {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
 }

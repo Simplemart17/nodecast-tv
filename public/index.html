@@ -148,8 +148,9 @@
               <!-- Custom Controls Overlay -->
               <div class="watch-overlay hidden" id="player-controls-overlay">
                 <!-- Top Bar -->
-                <div class="watch-top-bar">
+                <div class="watch-top-bar live-header">
                   <h2 class="watch-title-overlay" id="player-channel-name"></h2>
+                  <div class="transcode-status hidden" id="player-transcode-status">Direct</div>
                 </div>
 
 
@@ -586,6 +587,17 @@
               </div>
               <div class="setting-item">
                 <label class="setting-toggle">
+                  <input type="checkbox" id="setting-force-video-transcode-tc">
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="setting-info">
+                  <span class="setting-label">Force Video Transcode</span>
+                  <span class="setting-hint">Force full video transcoding (burn-in subtitles, incompatible video). Uses
+                    HW encoder.</span>
+                </div>
+              </div>
+              <div class="setting-item">
+                <label class="setting-toggle">
                   <input type="checkbox" id="setting-force-remux-tc">
                   <span class="toggle-slider"></span>
                 </label>
@@ -726,7 +738,7 @@
           <!-- Player Controls Overlay -->
           <div class="watch-overlay" id="watch-overlay">
             <!-- Top Bar: Back + Title -->
-            <div class="watch-top-bar">
+            <div class="watch-top-bar vod-header">
               <button class="watch-back-btn" id="watch-back-btn" title="Back">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon">
                   <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
@@ -736,6 +748,7 @@
                 <h3 class="watch-title" id="watch-title"></h3>
                 <p class="watch-subtitle" id="watch-subtitle"></p>
               </div>
+              <div class="transcode-status hidden" id="watch-transcode-status">Direct</div>
             </div>
 
             <!-- Center: Large Play Button -->

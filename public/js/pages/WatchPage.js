@@ -59,6 +59,9 @@ class WatchPage {
         this.captionsMenu = document.getElementById('watch-captions-menu');
         this.captionsList = document.getElementById('watch-captions-list');
 
+        // Transcode Status
+        this.transcodeStatusEx = document.getElementById('watch-transcode-status');
+
         // State
         this.hls = null;
         this.content = null;
@@ -229,9 +232,63 @@ class WatchPage {
 
         // Check favorite status
         await this.checkFavorite();
-
         // Show overlay initially
         this.showOverlay();
+    }
+
+    /**
+     * Start a HLS transcode session
+     */
+    async startTranscodeSession(url, options = {}) {
+        try {
+            console.log('[WatchPage] Starting HLS transcode session...', options);
+            const res = await fetch('/api/transcode/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, ...options })
+            });
+            if (!res.ok) throw new Error('Failed to start session');
+            const session = await res.json();
+            this.currentSessionId = session.sessionId;
+            return session.playlistUrl;
+        } catch (err) {
+            console.error('[WatchPage] Session start failed:', err);
+            // Fallback to direct transcode if session fails
+            return `/api/transcode?url=${encodeURIComponent(url)}`;
+        }
+    }
+
+    /**
+     * Stop and cleanup current transcode session
+     */
+    async stopTranscodeSession() {
+        if (this.currentSessionId) {
+            console.log('[WatchPage] Stopping transcode session:', this.currentSessionId);
+            try {
+                // Fire and forget cleanup
+                fetch(`/api/transcode/${this.currentSessionId}`, { method: 'DELETE' });
+            } catch (err) {
+                console.error('Failed to stop session:', err);
+            }
+            this.currentSessionId = null;
+        }
+    }
+
+    async updateTranscodeStatus(mode, text) {
+        if (!this.transcodeStatusEx) return;
+
+        this.transcodeStatusEx.className = 'transcode-status'; // Reset classes
+
+        if (mode === 'hidden') {
+            this.transcodeStatusEx.classList.add('hidden');
+            return;
+        }
+
+        this.transcodeStatusEx.textContent = text || mode;
+        this.transcodeStatusEx.classList.add(mode);
+
+        // Ensure it's visible
+        this.transcodeStatusEx.classList.remove('hidden');
     }
 
     async loadVideo(url) {
@@ -266,16 +323,22 @@ class WatchPage {
                 console.log(`[WatchPage] Probe result: video=${info.video}, audio=${info.audio}, compatible=${info.compatible}`);
 
                 if (info.needsTranscode) {
-                    console.log('[WatchPage] Auto: Using transcode (incompatible audio)');
-                    const finalUrl = `/api/transcode?url=${encodeURIComponent(url)}`;
-                    this.video.src = finalUrl;
-                    this.video.play().catch(e => {
-                        if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
-                    });
+                    console.log('[WatchPage] Auto: Using HLS transcode session (incompatible audio/video)');
+
+                    // Heuristic: If video is h264/compat, copy video. Usage: Audio fix.
+                    const videoMode = (info.video && info.video.includes('h264')) ? 'copy' : 'encode';
+                    const statusText = videoMode === 'copy' ? 'Transcoding (Audio)' : 'Transcoding (Video)';
+
+                    this.updateTranscodeStatus('transcoding', statusText);
+                    const playlistUrl = await this.startTranscodeSession(url, { videoMode, videoCodec: info.video });
+                    this.playHls(playlistUrl);
                     this.setVolumeFromStorage();
                     return;
                 } else if (info.needsRemux) {
+                    // Remux (container swap) currently doesn't use session logic, uses direct stream
+                    // TODO: Move remux to session logic if seeking is needed for TS files
                     console.log('[WatchPage] Auto: Using remux (.ts container)');
+                    this.updateTranscodeStatus('remuxing', 'Remux (Auto)');
                     const finalUrl = `/api/remux?url=${encodeURIComponent(url)}`;
                     this.video.src = finalUrl;
                     this.video.play().catch(e => {
@@ -292,14 +355,30 @@ class WatchPage {
             }
         }
 
-        // Priority 1: Force Transcode - route through FFmpeg
+        // Priority 1: Force Video Transcode (Full)
+        if (settings.forceVideoTranscode) {
+            console.log('[WatchPage] Force Video Transcode enabled. Starting session (encode)...');
+            this.updateTranscodeStatus('transcoding', 'Transcoding (Video)');
+            const playlistUrl = await this.startTranscodeSession(url, { videoMode: 'encode' });
+            this.playHls(playlistUrl);
+            this.setVolumeFromStorage();
+            return;
+        }
+
         if (settings.forceTranscode) {
-            console.log('[WatchPage] Force Transcode enabled');
-            const finalUrl = `/api/transcode?url=${encodeURIComponent(url)}`;
-            this.video.src = finalUrl;
-            this.video.play().catch(e => {
-                if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
-            });
+            console.log('[WatchPage] Force Audio Transcode enabled. Starting session (copy)...');
+            this.updateTranscodeStatus('transcoding', 'Transcoding (Audio)');
+
+            // Probe to get video codec for HEVC tag handling
+            let videoCodec = 'unknown';
+            try {
+                const probeRes = await fetch(`/api/probe?url=${encodeURIComponent(url)}`);
+                const info = await probeRes.json();
+                videoCodec = info.video;
+            } catch (e) { console.warn('Probe failed for force audio, assuming h264'); }
+
+            const playlistUrl = await this.startTranscodeSession(url, { videoMode: 'copy', videoCodec });
+            this.playHls(playlistUrl);
             this.setVolumeFromStorage();
             return;
         }
@@ -307,6 +386,7 @@ class WatchPage {
         // Priority 2: Force Remux for raw TS streams
         if (settings.forceRemux && isRawTs) {
             console.log('[WatchPage] Force Remux enabled');
+            this.updateTranscodeStatus('remuxing', 'Remux (Force)');
             const finalUrl = `/api/remux?url=${encodeURIComponent(url)}`;
             this.video.src = finalUrl;
             this.video.play().catch(e => {
@@ -325,48 +405,11 @@ class WatchPage {
 
         // Use HLS.js for HLS streams
         if (looksLikeHls && Hls.isSupported()) {
-            this.hls = new Hls({
-                maxBufferLength: 30,
-                maxMaxBufferLength: 60,
-                startLevel: -1,
-                enableWorker: true,
-            });
-
-            this.hls.loadSource(finalUrl);
-            this.hls.attachMedia(this.video);
-
-            // Listen for subtitle track updates
-            this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
-                console.log('[WatchPage] Subtitle tracks updated:', data.subtitleTracks);
-                // Wait a moment for native text tracks to populate
-                setTimeout(() => this.updateCaptionsTracks(), 100);
-            });
-
-            this.hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (event, data) => {
-                console.log('[WatchPage] Subtitle track switched:', data);
-            });
-
-            this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                this.video.play().catch(e => {
-                    if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
-                });
-            });
-
-            this.hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                    console.error('[WatchPage] HLS fatal error:', data);
-                    // Try proxy on CORS error
-                    if (!needsProxy && (data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
-                        console.log('[WatchPage] Retrying via proxy...');
-                        this.hls.loadSource(`/api/proxy/stream?url=${encodeURIComponent(url)}`);
-                        this.hls.startLoad();
-                    } else {
-                        this.hls.destroy();
-                    }
-                }
-            });
+            this.updateTranscodeStatus('direct', 'Direct HLS');
+            this.playHls(finalUrl);
         } else {
             // Direct playback for mp4/mkv/avi
+            this.updateTranscodeStatus('direct', 'Direct Play');
             this.video.src = finalUrl;
             this.video.play().catch(e => {
                 if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
@@ -376,6 +419,56 @@ class WatchPage {
         this.setVolumeFromStorage();
     }
 
+    /**
+     * Play HLS stream using Hls.js
+     */
+    playHls(url) {
+        if (this.hls) {
+            this.hls.destroy();
+        }
+
+        this.hls = new Hls({
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            startLevel: -1,
+            enableWorker: true,
+        });
+
+        this.hls.loadSource(url);
+        this.hls.attachMedia(this.video);
+
+        // Listen for subtitle track updates
+        this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
+            console.log('[WatchPage] Subtitle tracks updated:', data.subtitleTracks);
+            // Wait a moment for native text tracks to populate
+            setTimeout(() => this.updateCaptionsTracks(), 100);
+        });
+
+        this.hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (event, data) => {
+            console.log('[WatchPage] Subtitle track switched:', data);
+        });
+
+        this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            this.video.play().catch(e => {
+                if (e.name !== 'AbortError') console.error('[WatchPage] Autoplay error:', e);
+            });
+        });
+
+        this.hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+                console.error('[WatchPage] HLS fatal error:', data);
+                // Try proxy on CORS error (only if not already proxied/transcoded)
+                // Note: Transcoded streams are local, so no CORS issues usually
+                if (!url.startsWith('/api/') && (data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
+                    console.log('[WatchPage] Retrying via proxy...');
+                    this.playHls(`/api/proxy/stream?url=${encodeURIComponent(this.currentUrl)}`);
+                } else {
+                    this.hls.destroy();
+                }
+            }
+        });
+    }
+
     setVolumeFromStorage() {
         const savedVolume = localStorage.getItem('nodecast-volume') || '80';
         this.video.volume = parseInt(savedVolume) / 100;
@@ -383,6 +476,10 @@ class WatchPage {
     }
 
     stop() {
+        // Cleanup transcode session if exists
+        this.stopTranscodeSession();
+        this.updateTranscodeStatus('hidden');
+
         if (this.hls) {
             this.hls.destroy();
             this.hls = null;

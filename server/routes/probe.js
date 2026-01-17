@@ -112,11 +112,15 @@ function analyzeProbeResult(probeResult, url) {
         }));
 
     // Determine what processing is needed
-    // 1. Incompatible audio -> Transcode (highest priority)
-    const needsTranscode = !audioOk;
+    // 4. MKV files often cause OOM/decoding issues in browser fMP4 remux, 
+    // so we force them to "needsTranscode" which uses HLS (more robust).
+    // The frontend will still use "copy" mode if codecs are compatible.
+    const isMkv = container.includes('matroska') || container.includes('webm') || url.endsWith('.mkv');
 
-    // 2. Compatible audio/video but incompatible container -> Remux
-    // This catches raw TS, MKV, AVI, etc. that have H.264/AAC but wrong container
+    // 1. Incompatible audio/video OR MKV -> Transcode (or HLS Copy)
+    const needsTranscode = !audioOk || !videoOk || isMkv;
+
+    // 2. Compatible audio/video but incompatible container (non-MKV) -> Remux (fMP4 pipe)
     const needsRemux = !needsTranscode && (!containerOk || isRawTs);
 
     const compatible = !needsTranscode && !needsRemux;

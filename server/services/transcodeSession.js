@@ -165,8 +165,9 @@ class TranscodeSession extends EventEmitter {
      * Build FFmpeg arguments for HLS output with optional GPU encoding
      */
     buildFFmpegArgs() {
-        const segmentPattern = path.join(this.dir, 'seg%04d.ts');
+        const segmentPattern = path.join(this.dir, 'seg%04d.m4s');
         const encoder = this.options.hwEncoder || 'software';
+        const videoMode = this.options.videoMode || 'encode';
 
         const args = [
             '-hide_banner',
@@ -174,8 +175,10 @@ class TranscodeSession extends EventEmitter {
             '-user_agent', this.options.userAgent,
         ];
 
-        // Add hardware acceleration input options based on encoder
-        this.addHwAccelInputArgs(args, encoder);
+        // Add hardware acceleration input options based on encoder (only if encoding)
+        if (videoMode === 'encode') {
+            this.addHwAccelInputArgs(args, encoder);
+        }
 
         // Input options (common)
         args.push(
@@ -186,7 +189,9 @@ class TranscodeSession extends EventEmitter {
             '-reconnect', '1',
             '-reconnect_streamed', '1',
             '-reconnect_delay_max', '3',
-            '-seekable', '0'
+            '-seekable', '0',
+            // Critical for syncing copied video with transcoded audio if source has non-zero start time
+            '-copyts'
         );
 
         // Add seek offset if specified
@@ -200,14 +205,30 @@ class TranscodeSession extends EventEmitter {
         args.push('-map', '0:v:0');
         args.push('-map', '0:a:0?');
 
-        // Add video encoder and filters based on selected encoder
-        this.addVideoEncoderArgs(args, encoder);
+        // Add video encoder and filters based on selected encoder OR copy
+        if (videoMode === 'copy') {
+            args.push('-c:v', 'copy');
+
+            // Critical for MKV/MP4 -> TS copy: Convert bitstream from AVCC/HVCC to Annex B
+            if (this.options.videoCodec === 'hevc' || this.options.videoCodec === 'h265') {
+                args.push('-bsf:v', 'hevc_mp4toannexb');
+            } else if (this.options.videoCodec === 'h264' || this.options.videoCodec === 'avc') {
+                args.push('-bsf:v', 'h264_mp4toannexb');
+            } else {
+                // Fallback (e.g. unknown codec), try strict extraction
+                args.push('-bsf:v', 'dump_extra');
+            }
+        } else {
+            this.addVideoEncoderArgs(args, encoder);
+        }
 
         // Audio: Transcode to AAC
         args.push(
             '-c:a', 'aac',
             '-ar', '48000',
-            '-b:a', '192k'
+            '-b:a', '192k',
+            // Smart Stereo Downmix (NetV Style): Boosts dialogue (FC) and preserves LFE
+            '-af', 'pan=stereo|FL=FC+0.30*FL+0.30*BL|FR=FC+0.30*FR+0.30*BR,aresample=async=1'
         );
 
         // HLS output options
@@ -217,7 +238,7 @@ class TranscodeSession extends EventEmitter {
             '-hls_list_size', '0', // Keep all segments in playlist
             '-hls_flags', 'independent_segments+append_list',
             '-hls_segment_type', 'mpegts',
-            '-hls_segment_filename', segmentPattern,
+            '-hls_segment_filename', path.join(this.dir, 'seg%04d.ts'),
             this.playlistPath
         );
 
@@ -393,7 +414,8 @@ class TranscodeSession extends EventEmitter {
             '-preset', 'veryfast',     // Fast for real-time
             '-crf', String(crf),
             '-profile:v', 'high',
-            '-level', '4.1'
+            '-level', '4.1',
+            '-pix_fmt', 'yuv420p'      // Force 8-bit output for compatibility (fixes 10-bit input errors)
         );
     }
 

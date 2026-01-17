@@ -34,9 +34,10 @@ router.get('/', async (req, res) => {
         '-hide_banner',
         '-loglevel', 'warning',
         '-user_agent', userAgent,
-        // Low-latency startup: reduce probe/analyze time for faster first bytes
-        '-probesize', '32768',
-        '-analyzeduration', '500000', // 0.5 seconds - enough to detect audio
+        '-user_agent', userAgent,
+        // Standard probe size to handle complex containers (MKV) correctly
+        '-probesize', '5000000',
+        '-analyzeduration', '5000000',
         // Error resilience: discard corrupt packets, generate timestamps, ignore DTS, no buffering
         '-fflags', '+genpts+discardcorrupt+igndts+nobuffer',
         // Ignore errors in stream and continue
@@ -58,6 +59,8 @@ router.get('/', async (req, res) => {
         '-sn', '-dn',
         // Copy streams without re-encoding
         '-c', 'copy',
+        // Ensure extradata is correctly extracted/converted (fixes Annex B -> AVCC issues in Firefox)
+        '-bsf:v', 'dump_extra',
         // NOTE: We intentionally do NOT use -bsf:a aac_adtstoasc here
         // That filter only works for AAC audio and breaks AC3/EAC3/MP3.
         // If AAC audio from MPEG-TS fails in MP4, use /api/transcode instead.

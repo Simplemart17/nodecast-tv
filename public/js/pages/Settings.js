@@ -104,6 +104,7 @@ class SettingsPage {
         const forceProxyToggle = document.getElementById('setting-force-proxy-tc');
         const autoTranscodeToggle = document.getElementById('setting-auto-transcode-tc');
         const forceTranscodeToggle = document.getElementById('setting-force-transcode-tc');
+        const forceVideoTranscodeToggle = document.getElementById('setting-force-video-transcode-tc');
         const forceRemuxToggle = document.getElementById('setting-force-remux-tc');
         const streamFormatSelect = document.getElementById('setting-stream-format-tc');
 
@@ -122,6 +123,7 @@ class SettingsPage {
             if (forceProxyToggle) forceProxyToggle.checked = s.forceProxy === true;
             if (autoTranscodeToggle) autoTranscodeToggle.checked = s.autoTranscode !== false;
             if (forceTranscodeToggle) forceTranscodeToggle.checked = s.forceTranscode === true;
+            if (forceVideoTranscodeToggle) forceVideoTranscodeToggle.checked = s.forceVideoTranscode === true;
             if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
             if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
             if (userAgentSelect) userAgentSelect.value = s.userAgentPreset || 'chrome';
@@ -160,6 +162,11 @@ class SettingsPage {
 
         forceTranscodeToggle?.addEventListener('change', () => {
             this.app.player.settings.forceTranscode = forceTranscodeToggle.checked;
+            this.app.player.saveSettings();
+        });
+
+        forceVideoTranscodeToggle?.addEventListener('change', () => {
+            this.app.player.settings.forceVideoTranscode = forceVideoTranscodeToggle.checked;
             this.app.player.saveSettings();
         });
 

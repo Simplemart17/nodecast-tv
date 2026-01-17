@@ -63,7 +63,8 @@ function getDefaultSettings() {
     lastVolume: 80,
     autoPlayNextEpisode: false,
     forceProxy: false,
-    forceTranscode: false,
+    forceTranscode: false, // Force Audio Transcode
+    forceVideoTranscode: false, // Force Video Transcode
     forceRemux: false,
     autoTranscode: true,
     streamFormat: 'm3u8',
