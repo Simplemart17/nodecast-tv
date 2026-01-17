@@ -117,5 +117,13 @@ app.listen(PORT, async () => {
         await syncService.syncAll().catch(console.error);
         // Start the server-side sync timer after initial sync
         await syncService.startSyncTimer().catch(console.error);
+
+        // Detect hardware acceleration capabilities
+        try {
+            const hwDetect = require('./services/hwDetect');
+            await hwDetect.detect();
+        } catch (err) {
+            console.warn('Hardware detection failed:', err.message);
+        }
     }, 5000);
 });
