@@ -135,19 +135,14 @@ nodecast-tv is a web-based application. By default, **video decoding is handled 
 |-------|--------|---------|--------|------|
 | **H.264 (AVC)** | ✅ | ✅ | ✅ | ✅ |
 | **H.265 (HEVC)** | Auto-Transcode | Auto-Transcode | ✅ | ⚠️ |
-| **AV1** | ✅ | ✅ | ❌ | ✅ |
+| **AV1** | ✅ | ✅ | Auto-Transcode | ✅ |
 | **AAC Audio** | ✅ | ✅ | ✅ | ✅ |
 | **AC3/EAC3 (Dolby)** | Auto-Transcode | Auto-Transcode | ✅ | Auto-Transcode |
 
-> **⚠️ Note:** Edge requires the [HEVC Video Extensions](https://apps.microsoft.com/store/detail/hevc-video-extensions/9NMZLZ57R3T7) from the Microsoft Store to play H.265 (HEVC) natively. If missing, Auto-Transcode will handle it.
+> **⚠️ Note:** Edge requires the [HEVC Video Extensions](https://apps.microsoft.com/store/detail/hevc-video-extensions/9NMZLZ57R3T7) from the Microsoft Store to play H.265 (HEVC) natively.
+> **ℹ️ Note:** Safari plays AV1 natively on supported hardware (iPhone 15 Pro, M3 Macs). On older devices, Auto-Transcode handles it.
 
-**If a stream doesn't play:**
-1.  Ensure **"Auto Transcode"** is enabled in **Settings → Transcoding**.
-2.  If you have video but no audio, check that **"Force Audio Transcode"** is enabled (it should trigger automatically).
-3.  If buffering persists, try switching the **Hardware Encoder** setting or reducing the **Max Transcode Resolution**.
 
-**Note on Ad-Stitched Streams:**
-For channels like Pluto TV, the player handles audio discontinuities automatically. Transcoding is rarely needed unless the base codec is incompatible.
 
 ## Supported Stream Types
 
@@ -287,10 +282,10 @@ If you're using TVHeadend as your source, you may need to configure a few settin
 
 ### Acestream / P2P Streaming
 
-If you are using `acestream-docker-home` or similar tools, you **MUST** use the HLS output format.
+If you are using `acestream-docker-home` or similar tools, it is **recommended** to use the HLS output format to reduce server load, though NodeCast TV can remux raw streams if needed.
 
--   **Don't use**: `http://proxy:6878/ace/getstream?id=...` (This is a raw MPEG-TS stream)
--   **Do use**: `http://proxy:6878/ace/manifest.m3u8?id=...` (This wraps the stream in a browser-friendly HLS playlist)
+-   **Recommended:** `http://proxy:6878/ace/manifest.m3u8?id=...` (HLS Playlist - Direct Play)
+-   **Supported:** `http://proxy:6878/ace/getstream?id=...` (MPEG-TS - Requires Server Remuxing)
 
 ## Technology Stack
 
@@ -298,7 +293,7 @@ If you are using `acestream-docker-home` or similar tools, you **MUST** use the 
 - **Frontend**: Vanilla JavaScript (ES6+), CSS3
 - **Database**: SQLite (via better-sqlite3) for high-performance data storage
 - **Streaming**: HLS.js for stream playback
-- **Audio Transcoding**: FFmpeg (optional, via ffmpeg-static)
+- **Transcoding**: FFmpeg (integrated for hardware/software transcoding)
 
 ## Project Structure
 
