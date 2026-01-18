@@ -137,9 +137,13 @@ class App {
             this.navigateTo(page, false); // false = don't add to history
         });
 
-        // Initialize home page
+        // Initialize home page first (it's needed for channel list)
         await this.pages.home.init();
-        this.navigateTo('home', true); // true = replace history (don't add)
+
+        // Navigate to the page from URL hash, or default to home
+        const hash = window.location.hash.slice(1); // Remove #
+        const initialPage = hash && this.pages[hash] ? hash : 'home';
+        this.navigateTo(initialPage, true); // true = replace history (don't add)
 
         console.log('NodeCast TV initialized');
     }

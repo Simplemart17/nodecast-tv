@@ -94,7 +94,7 @@ class SettingsPage {
         this.updateEpgLastRefreshed();
     }
 
-    initTranscodingSettings() {
+    async initTranscodingSettings() {
         // Encoder settings
         const hwEncoderSelect = document.getElementById('setting-hw-encoder');
         const maxResolutionSelect = document.getElementById('setting-max-resolution');
@@ -113,24 +113,28 @@ class SettingsPage {
         const userAgentCustomInput = document.getElementById('setting-user-agent-custom-tc');
         const customUaContainer = document.getElementById('custom-user-agent-container-tc');
 
-        // Load current settings
-        if (this.app.player?.settings) {
-            const s = this.app.player.settings;
+        // Fetch settings directly from API to avoid race condition with VideoPlayer
+        let s;
+        try {
+            s = await API.settings.get();
+        } catch (err) {
+            console.warn('[Settings] Failed to load settings from API, using player defaults:', err);
+            s = this.app.player?.settings || {};
+        }
 
-            if (hwEncoderSelect) hwEncoderSelect.value = s.hwEncoder || 'auto';
-            if (maxResolutionSelect) maxResolutionSelect.value = s.maxResolution || '1080p';
-            if (qualitySelect) qualitySelect.value = s.quality || 'medium';
-            if (forceProxyToggle) forceProxyToggle.checked = s.forceProxy === true;
-            if (autoTranscodeToggle) autoTranscodeToggle.checked = s.autoTranscode !== false;
-            if (forceTranscodeToggle) forceTranscodeToggle.checked = s.forceTranscode === true;
-            if (forceVideoTranscodeToggle) forceVideoTranscodeToggle.checked = s.forceVideoTranscode === true;
-            if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
-            if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
-            if (userAgentSelect) userAgentSelect.value = s.userAgentPreset || 'chrome';
-            if (userAgentCustomInput) userAgentCustomInput.value = s.userAgentCustom || '';
-            if (customUaContainer) {
-                customUaContainer.style.display = userAgentSelect?.value === 'custom' ? 'flex' : 'none';
-            }
+        if (hwEncoderSelect) hwEncoderSelect.value = s.hwEncoder || 'auto';
+        if (maxResolutionSelect) maxResolutionSelect.value = s.maxResolution || '1080p';
+        if (qualitySelect) qualitySelect.value = s.quality || 'medium';
+        if (forceProxyToggle) forceProxyToggle.checked = s.forceProxy === true;
+        if (autoTranscodeToggle) autoTranscodeToggle.checked = s.autoTranscode !== false;
+        if (forceTranscodeToggle) forceTranscodeToggle.checked = s.forceTranscode === true;
+        if (forceVideoTranscodeToggle) forceVideoTranscodeToggle.checked = s.forceVideoTranscode === true;
+        if (forceRemuxToggle) forceRemuxToggle.checked = s.forceRemux || false;
+        if (streamFormatSelect) streamFormatSelect.value = s.streamFormat || 'm3u8';
+        if (userAgentSelect) userAgentSelect.value = s.userAgentPreset || 'chrome';
+        if (userAgentCustomInput) userAgentCustomInput.value = s.userAgentCustom || '';
+        if (customUaContainer) {
+            customUaContainer.style.display = userAgentSelect?.value === 'custom' ? 'flex' : 'none';
         }
 
         // Event listeners for encoder settings
@@ -152,7 +156,7 @@ class SettingsPage {
         // Audio Mix Preset
         const audioMixSelect = document.getElementById('setting-audio-mix');
         if (audioMixSelect) {
-            audioMixSelect.value = this.app.player?.settings?.audioMixPreset || 'auto';
+            audioMixSelect.value = s.audioMixPreset || 'auto';
             audioMixSelect.addEventListener('change', () => {
                 this.app.player.settings.audioMixPreset = audioMixSelect.value;
                 this.app.player.saveSettings();
