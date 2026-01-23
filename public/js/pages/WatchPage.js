@@ -88,6 +88,8 @@ class WatchPage {
         this.nextEpisodeTimeout = null;
         this.nextEpisodeCountdown = 10;
         this.nextEpisodeInterval = null;
+        this.nextEpisodeShowing = false;
+        this.nextEpisodeDismissed = false;
 
         // Watch history
         this.historyInterval = null;
@@ -258,6 +260,7 @@ class WatchPage {
 
         // Reset state
         this.cancelNextEpisode();
+        this.nextEpisodeDismissed = false;
 
         // Navigate to watch page
         this.app.navigateTo('watch', true);
@@ -760,6 +763,28 @@ class WatchPage {
         const percent = (this.video.currentTime / this.video.duration) * 100;
         this.progressSlider.value = percent;
         this.timeCurrent.textContent = this.formatTime(this.video.currentTime);
+
+        // Show "Up Next" panel early for series (like streaming services do during credits)
+        // Only show if auto-play next episode is enabled
+        const autoPlayEnabled = this.app?.player?.settings?.autoPlayNextEpisode;
+        if (autoPlayEnabled && this.contentType === 'series' && this.seriesInfo && !this.nextEpisodeShowing && !this.nextEpisodeDismissed) {
+            const duration = this.video.duration;
+            const currentTime = this.video.currentTime;
+
+            // Only proceed if we have reliable duration data
+            if (isFinite(duration) && duration >= 180 && currentTime >= 120) {
+                const timeRemaining = duration - currentTime;
+                const creditsThreshold = 10; // seconds before end to show "Up Next"
+
+                if (timeRemaining <= creditsThreshold && timeRemaining > 0) {
+                    const nextEp = this.getNextEpisode();
+                    if (nextEp) {
+                        this.nextEpisodeShowing = true;
+                        this.showNextEpisodePanel(nextEp);
+                    }
+                }
+            }
+        }
     }
 
     onMetadataLoaded() {
@@ -805,10 +830,12 @@ class WatchPage {
     }
 
     onEnded() {
-        // For series, show next episode panel
-        if (this.contentType === 'series' && this.seriesInfo) {
+        // For series, show next episode panel if not already showing and auto-play is enabled
+        const autoPlayEnabled = this.app?.player?.settings?.autoPlayNextEpisode;
+        if (autoPlayEnabled && this.contentType === 'series' && this.seriesInfo && !this.nextEpisodeShowing) {
             const nextEp = this.getNextEpisode();
             if (nextEp) {
+                this.nextEpisodeShowing = true;
                 this.showNextEpisodePanel(nextEp);
             }
         }
@@ -1326,6 +1353,8 @@ class WatchPage {
     cancelNextEpisode() {
         clearInterval(this.nextEpisodeInterval);
         this.nextEpisodePanel?.classList.add('hidden');
+        this.nextEpisodeShowing = false;
+        this.nextEpisodeDismissed = true; // Prevent re-triggering
         if (this.nextEpisodePanel) {
             this.nextEpisodePanel.nextEpisodeData = null;
         }

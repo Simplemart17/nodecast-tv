@@ -3779,19 +3779,20 @@ kbd {
 /* Next Episode Panel */
 .watch-next-episode {
   position: absolute;
-  bottom: 140px;
+  bottom: 160px;
   right: var(--space-lg);
   display: flex;
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-md) var(--space-lg);
-  background: var(--glass-bg);
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   animation: slideInRight 0.3s ease;
-  z-index: 20;
+  z-index: 50;
+  pointer-events: auto;
 }
 
 .watch-next-episode.hidden {
@@ -4088,7 +4089,7 @@ kbd {
   .watch-next-episode {
     left: var(--space-md);
     right: var(--space-md);
-    bottom: 100px;
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px));
     flex-wrap: wrap;
   }
 
@@ -4098,11 +4099,6 @@ kbd {
 
   .next-info h4 {
     max-width: none;
-  }
-
-  /* iOS Safari safe area adjustments for mobile */
-  .watch-next-episode {
-    bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   }
 
   .watch-bottom-bar {
