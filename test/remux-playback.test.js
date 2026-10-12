@@ -21,7 +21,7 @@ test('probe preserves every audio track index including unknown codecs', () => {
 
 function playerFixture(name, settings, probe) {
     const window = { dispatchEvent() {} };
-    const context = { window, console: { log() {}, warn() {}, error() {} },
+    const context = { window, VodDuration: require('../public/js/components/VodDuration'), console: { log() {}, warn() {}, error() {} },
         CustomEvent: class {}, document: { getElementById() { return null; } },
         API: { settings: { get: async () => settings } }, fetch: probe };
     const file = name === 'VideoPlayer' ? 'components/VideoPlayer.js' : 'pages/WatchPage.js';

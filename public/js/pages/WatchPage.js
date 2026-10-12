@@ -246,6 +246,7 @@ class WatchPage {
      * @param {string} streamUrl - Stream URL
      */
     async play(content, streamUrl) {
+        this.sourceDuration = 0;
         this.content = content;
         this.contentType = content.type;
         this.seriesInfo = content.seriesInfo || null;
@@ -414,7 +415,9 @@ class WatchPage {
         this.currentUrl = url;
 
         // Stop any existing playback
+        const knownDuration = this.sourceDuration;
         this.stop();
+        this.setSourceDuration(VodDuration.firstValid(VodDuration.fromContent(this.content || {}), knownDuration));
         const playbackGeneration = this.playbackGeneration;
         let probeInfo = null;
 
@@ -443,6 +446,7 @@ class WatchPage {
                 const info = await probeRes.json();
                 if (this.playbackGeneration !== playbackGeneration) return;
                 probeInfo = info;
+                this.setSourceDuration(info.duration);
                 console.log(`[WatchPage] Probe result: video=${info.video}, audio=${info.audio}, ${info.width}x${info.height}, compatible=${info.compatible}`);
 
                 // Store early probe info for quality display
@@ -640,6 +644,13 @@ class WatchPage {
         // Stop history tracking and save final progress
         this.stopHistoryTracking();
         this.saveProgress();
+        this.sourceDuration = 0;
+        this.durationReady = false;
+        if (this.timeTotal) {
+            this.timeTotal.textContent = '';
+            this.timeTotal.classList.add('hidden');
+        }
+        if (this.durationEl) this.durationEl.textContent = '';
 
         // Cleanup transcode session if exists
         this.stopTranscodeSession();
@@ -787,8 +798,30 @@ class WatchPage {
 
     // === UI Updates ===
 
+    getPlaybackDuration() {
+        if (this.sourceDuration > 0) return this.sourceDuration;
+        return !this.currentSessionId && this.durationReady ? VodDuration.parse(this.video?.duration) : 0;
+    }
+
+    setSourceDuration(value) {
+        const duration = VodDuration.parse(value);
+        if (duration > 0) this.sourceDuration = duration;
+        this.updateDurationDisplay();
+    }
+
+    updateDurationDisplay() {
+        const duration = this.getPlaybackDuration();
+        const label = duration > 0 ? this.formatTime(duration) : '';
+        if (this.timeTotal) {
+            this.timeTotal.textContent = label;
+            this.timeTotal.classList.toggle('hidden', !label);
+        }
+        if (this.durationEl) this.durationEl.textContent = label;
+    }
+
     updateProgress() {
-        if (!this.video || !this.video.duration) return;
+        if (!this.video) return;
+        this.updateDurationDisplay();
 
         const percent = (this.video.currentTime / this.video.duration) * 100;
         this.progressSlider.value = percent;
@@ -818,6 +851,9 @@ class WatchPage {
     }
 
     onMetadataLoaded() {
+        this.durationReady = true;
+        if (!this.currentSessionId) this.setSourceDuration(this.video?.duration);
+        else this.updateDurationDisplay();
         // Detect resolution
         if (this.video && this.video.videoHeight > 0) {
             this.currentStreamInfo = {
@@ -886,7 +922,7 @@ class WatchPage {
     }
 
     formatTime(seconds) {
-        if (!seconds || isNaN(seconds)) return '0:00';
+        if (!Number.isFinite(Number(seconds)) || Number(seconds) < 0) return '0:00';
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
         const s = Math.floor(seconds % 60);
@@ -1072,6 +1108,7 @@ class WatchPage {
         this.yearEl.textContent = this.content.year || '';
         this.ratingEl.textContent = this.content.rating ? `★ ${this.content.rating}` : '';
         this.descriptionEl.textContent = this.content.description || '';
+        this.updateDurationDisplay();
 
         // Update play button text
         if (this.playBtnText) {
@@ -1194,7 +1231,8 @@ class WatchPage {
                     year: movie.year,
                     rating: movie.rating,
                     sourceId: sourceId,
-                    categoryId: movie.category_id
+                    categoryId: movie.category_id,
+                    duration: VodDuration.fromContent(movie)
                 }, result.url);
             }
         } catch (e) {
@@ -1260,6 +1298,7 @@ class WatchPage {
         const episodeId = episodeEl.dataset.episodeId;
         const seasonNum = episodeEl.dataset.season;
         const episodeNum = episodeEl.dataset.episode;
+        const episode = this.seriesInfo?.episodes?.[seasonNum]?.find(ep => String(ep.id) === String(episodeId));
         const container = episodeEl.dataset.container || 'mp4';
 
         try {
@@ -1281,7 +1320,8 @@ class WatchPage {
                     seriesId: this.content.seriesId,
                     seriesInfo: this.seriesInfo,
                     currentSeason: seasonNum,
-                    currentEpisode: episodeNum
+                    currentEpisode: episodeNum,
+                    duration: VodDuration.fromContent(episode || {})
                 }, result.url);
             }
         } catch (e) {
@@ -1372,7 +1412,8 @@ class WatchPage {
                     seriesId: this.content.seriesId,
                     seriesInfo: this.seriesInfo,
                     currentSeason: nextEp.seasonNum,
-                    currentEpisode: nextEp.episode_num
+                    currentEpisode: nextEp.episode_num,
+                    duration: VodDuration.fromContent(nextEp)
                 }, result.url);
             }
         } catch (e) {
