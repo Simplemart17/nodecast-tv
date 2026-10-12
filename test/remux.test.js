@@ -113,11 +113,13 @@ test('remux accepts HTTP(S), preserves query credentials, and restricts nested p
 });
 
 function findFFmpeg() {
+    // Match server/index.js: prefer system FFmpeg, then the optional binary.
+    if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0) return 'ffmpeg';
     try {
         const binary = require('ffmpeg-static');
         if (binary && fs.existsSync(binary)) return binary;
     } catch { /* Optional dependency may be absent. */ }
-    return spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0 ? 'ffmpeg' : null;
+    return null;
 }
 
 function runFFmpeg(binary, args) {
@@ -129,9 +131,9 @@ function runFFmpeg(binary, args) {
         child.stdout.on('data', data => stdout.push(data));
         child.stderr.on('data', data => stderr.push(data));
         child.on('error', error => { clearTimeout(timer); reject(error); });
-        child.on('close', code => {
+        child.on('close', (code, signal) => {
             clearTimeout(timer);
-            resolve({ code, timedOut, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr).toString() });
+            resolve({ code, signal, timedOut, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr).toString() });
         });
     });
 }
@@ -182,7 +184,7 @@ test('real FFmpeg remuxes encrypted HLS over HTTP and blocks local HLS segments'
                 assert.match(result.stderr, /Protocol 'file' not on whitelist/);
                 assert.equal(result.stdout.length, 0);
             } else {
-                assert.equal(result.code, 0, `${file}: ${result.stderr}`);
+                assert.equal(result.code, 0, `${file} (${ffmpeg}, signal=${result.signal}): ${result.stderr}`);
                 assert.ok(result.stdout.includes(Buffer.from('ftyp')), `${file}: no MP4 output`);
                 assert.ok(result.stdout.includes(Buffer.from('mdat')), `${file}: no media packets`);
             }
