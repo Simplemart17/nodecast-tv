@@ -1,3 +1,4 @@
+const { redactUrl, redactText, validateHttpUrl } = require('../services/urlSecurity');
 const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
@@ -62,6 +63,7 @@ function validateStreamUrl(raw) {
  */
 router.get('/', async (req, res) => {
     const { url } = req.query;
+    try { validateHttpUrl(url); } catch (error) { return res.status(400).json({ error: error.message }); }
     if (!url) {
         return res.status(400).json({ error: 'URL parameter is required' });
     }
@@ -84,7 +86,7 @@ router.get('/', async (req, res) => {
     const settings = await db.settings.get();
     const userAgent = db.getUserAgent(settings);
 
-    console.log(`[Remux] Starting remux for: ${safeUrl}`);
+    console.log(`[Remux] Starting remux for: ${redactUrl(safeUrl)}`);
     console.log(`[Remux] Using User-Agent: ${settings.userAgentPreset}`);
 
     // FFmpeg arguments for pure remux (no encoding)
@@ -137,13 +139,13 @@ router.get('/', async (req, res) => {
         '-' // Output to stdout
     ];
 
-    console.log(`[Remux] Full command: ${ffmpegPath} ${args.join(' ')}`);
+    console.log(`[Remux] Full command: ${ffmpegPath} ${redactText(args.join(' '))}`);
 
     let ffmpeg;
     try {
         ffmpeg = spawn(ffmpegPath, args);
     } catch (spawnErr) {
-        console.error('[Remux] Failed to spawn FFmpeg:', spawnErr);
+        console.error('[Remux] Failed to spawn FFmpeg:', redactText(spawnErr.message));
         return res.status(500).json({ error: 'FFmpeg spawn failed', details: spawnErr.message });
     }
 
@@ -159,7 +161,7 @@ router.get('/', async (req, res) => {
         const msg = data.toString();
         // Only log warnings/errors, not progress
         if (msg.includes('Warning') || msg.includes('Error') || msg.includes('error')) {
-            console.log(`[Remux FFmpeg] ${msg}`);
+            console.log(`[Remux FFmpeg] ${redactText(msg)}`);
         }
     });
 
@@ -178,7 +180,7 @@ router.get('/', async (req, res) => {
 
     // Handle spawn errors
     ffmpeg.on('error', (err) => {
-        console.error('[Remux] Failed to spawn FFmpeg:', err);
+        console.error('[Remux] Failed to spawn FFmpeg:', redactText(err.message));
         if (!res.headersSent) {
             res.status(500).json({ error: 'Remux failed to start' });
         }

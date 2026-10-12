@@ -1,9 +1,11 @@
+const { redactUrl, redactText, validateHttpUrl, FFMPEG_PROTOCOL_WHITELIST } = require('../services/urlSecurity');
 const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
 const db = require('../db');
+const { requireAdmin } = require('../auth');
 const transcodeSession = require('../services/transcodeSession');
 
 /**
@@ -35,12 +37,14 @@ router.post('/session', async (req, res) => {
         return res.status(400).json({ error: 'URL is required' });
     }
 
+    try { validateHttpUrl(url); } catch (error) { return res.status(400).json({ error: error.message }); }
     const ffmpegPath = req.app.locals.ffmpegPath || 'ffmpeg';
     const settings = await db.settings.get();
     const userAgent = db.getUserAgent(settings);
 
     try {
         const session = await transcodeSession.createSession(url, {
+            ownerId: req.user.id,
             ffmpegPath,
             userAgent,
             seekOffset: seekOffset || 0,
@@ -76,7 +80,7 @@ router.post('/session', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('[Transcode] Session creation failed:', err);
+        console.error('[Transcode] Session creation failed:', redactText(err.message));
         res.status(500).json({ error: 'Failed to create session', details: err.message });
     }
 });
@@ -87,7 +91,7 @@ router.post('/session', async (req, res) => {
  */
 router.get('/:sessionId/stream.m3u8', async (req, res) => {
     const { sessionId } = req.params;
-    const session = transcodeSession.getSession(sessionId);
+    const session = transcodeSession.getSession(sessionId, req.user.id);
 
     if (!session) {
         return res.status(404).json({ error: 'Session not found' });
@@ -115,7 +119,7 @@ router.get('/:sessionId/:segment', async (req, res) => {
         return res.status(404).json({ error: 'Invalid segment' });
     }
 
-    const session = transcodeSession.getSession(sessionId);
+    const session = transcodeSession.getSession(sessionId, req.user.id);
     if (!session) {
         return res.status(404).json({ error: 'Session not found' });
     }
@@ -138,7 +142,8 @@ router.delete('/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
 
     try {
-        await transcodeSession.removeSession(sessionId);
+        if (!transcodeSession.getSession(sessionId, req.user.id)) return res.status(404).json({ error: 'Session not found' });
+        await transcodeSession.removeSession(sessionId, req.user.id);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to remove session', details: err.message });
@@ -149,7 +154,7 @@ router.delete('/:sessionId', async (req, res) => {
  * List all active sessions (for debugging)
  * GET /api/transcode/sessions
  */
-router.get('/sessions', (req, res) => {
+router.get('/sessions', requireAdmin, (req, res) => {
     res.json(transcodeSession.getAllSessions());
 });
 
@@ -162,6 +167,7 @@ router.get('/sessions', (req, res) => {
  */
 router.get('/', async (req, res) => {
     const { url } = req.query;
+    try { validateHttpUrl(url); } catch (error) { return res.status(400).json({ error: error.message }); }
     if (!url) {
         return res.status(400).json({ error: 'URL parameter is required' });
     }
@@ -172,7 +178,7 @@ router.get('/', async (req, res) => {
     const settings = await db.settings.get();
     const userAgent = db.getUserAgent(settings);
 
-    console.log(`[Transcode] Starting transcoding for: ${url}`);
+    console.log(`[Transcode] Starting transcoding for: ${redactUrl(url)}`);
     console.log(`[Transcode] Using User-Agent: ${settings.userAgentPreset}`);
     console.log(`[Transcode] Using binary: ${ffmpegPath}`);
 
@@ -182,6 +188,7 @@ router.get('/', async (req, res) => {
     const args = [
         '-hide_banner',
         '-loglevel', 'warning',
+        '-protocol_whitelist', FFMPEG_PROTOCOL_WHITELIST,
         '-user_agent', userAgent,
         // Faster startup - reduced probe/analyze for quicker first bytes
         '-probesize', '2000000', // 2MB (reduced from 5MB)
@@ -223,13 +230,13 @@ router.get('/', async (req, res) => {
         '-' // Output to stdout
     ];
 
-    console.log(`[Transcode] Full command: ${ffmpegPath} ${args.join(' ')}`);
+    console.log(`[Transcode] Full command: ${ffmpegPath} ${redactText(args.join(' '))}`);
 
     let ffmpeg;
     try {
         ffmpeg = spawn(ffmpegPath, args);
     } catch (spawnErr) {
-        console.error('[Transcode] Failed to spawn FFmpeg:', spawnErr);
+        console.error('[Transcode] Failed to spawn FFmpeg:', redactText(spawnErr.message));
         return res.status(500).json({ error: 'FFmpeg spawn failed', details: spawnErr.message });
     }
 
@@ -247,7 +254,7 @@ router.get('/', async (req, res) => {
     ffmpeg.stderr.on('data', (data) => {
         const msg = data.toString();
         stderrBuffer += msg;
-        console.log(`[FFmpeg] ${msg}`);
+        console.log(`[FFmpeg] ${redactText(msg)}`);
     });
 
     // Cleanup on client disconnect
@@ -265,7 +272,7 @@ router.get('/', async (req, res) => {
 
     // Handle spawn errors
     ffmpeg.on('error', (err) => {
-        console.error('[Transcode] Failed to spawn FFmpeg:', err);
+        console.error('[Transcode] Failed to spawn FFmpeg:', redactText(err.message));
         if (!res.headersSent) {
             res.status(500).json({ error: 'Transcoding failed to start' });
         }

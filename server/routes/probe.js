@@ -1,3 +1,4 @@
+const { redactUrl, redactText, validateHttpUrl, FFMPEG_PROTOCOL_WHITELIST } = require('../services/urlSecurity');
 const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
@@ -41,6 +42,7 @@ function probeStream(url, ffprobePath, userAgent = null, timeout = 15000) {
             '-print_format', 'json',
             '-show_streams',
             '-show_format',
+            '-protocol_whitelist', FFMPEG_PROTOCOL_WHITELIST,
             '-probesize', '5000000',
             '-analyzeduration', '5000000',
             url
@@ -150,6 +152,7 @@ function analyzeProbeResult(probeResult, url) {
 
 router.get('/', async (req, res) => {
     const { url, ua } = req.query;
+    try { validateHttpUrl(url); } catch (error) { return res.status(400).json({ error: error.message }); }
     if (!url) {
         return res.status(400).json({ error: 'URL parameter is required' });
     }
@@ -173,11 +176,11 @@ router.get('/', async (req, res) => {
     // Check cache
     const cached = probeCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-        console.log(`[Probe] Cache hit for: ${url.substring(0, 50)}...`);
+        console.log(`[Probe] Cache hit for: ${redactUrl(url)}...`);
         return res.json(cached.result);
     }
 
-    console.log(`[Probe] Probing: ${url.substring(0, 80)}... ${ua ? `(UA: ${ua})` : ''}`);
+    console.log(`[Probe] Probing: ${redactUrl(url)}... ${ua ? `(UA: ${ua})` : ''}`);
 
     try {
         const probeResult = await probeStream(url, ffprobePath, ua);

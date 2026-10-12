@@ -9,16 +9,11 @@ const API = {
     async request(method, endpoint, data = null) {
         const options = {
             method,
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }
         };
-
-        // Add authentication token if available
-        const token = localStorage.getItem('authToken');
-        if (token) {
-            options.headers['Authorization'] = `Bearer ${token}`;
-        }
 
         if (data) {
             options.body = JSON.stringify(data);
@@ -40,7 +35,7 @@ const API = {
             if (response.status === 401) {
                 localStorage.removeItem('authToken');
                 window.location.href = '/login.html';
-                return;
+                throw new Error('Authentication required');
             }
             throw new Error(result.error || `Server responded with ${response.status}`);
         }

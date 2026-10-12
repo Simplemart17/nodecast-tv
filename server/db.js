@@ -428,13 +428,14 @@ const users = {
     return db.users?.find(u => u.email === email);
   },
 
-  async create(userData) {
+  async create(userData, { initialSetup = false } = {}) {
     return mutateDb((db, markChanged) => {
       if (!db.users) {
         db.users = [];
       }
 
       // Check if username already exists
+      if (initialSetup && db.users.length) throw new Error('Setup already completed');
       if (db.users.some(u => u.username === userData.username)) {
         throw new Error('Username already exists');
       }
@@ -483,6 +484,7 @@ const users = {
       db.users[userIndex] = {
         ...db.users[userIndex],
         ...updates,
+        authVersion: updates.passwordHash ? (db.users[userIndex].authVersion || 0) + 1 : (db.users[userIndex].authVersion || 0),
         updatedAt: new Date().toISOString()
       };
 

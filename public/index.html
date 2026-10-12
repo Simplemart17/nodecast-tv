@@ -1096,7 +1096,7 @@
 
   <!-- JavaScript -->
   <script src="/js/icons.js"></script>
-  <script src="/js/api.js?v=2"></script>
+  <script src="/js/api.js?v=auth-2"></script>
   <script src="/js/components/VodDuration.js?v=1"></script>
   <script src="/js/components/VideoPlayer.js?v=2"></script>
   <script src="/js/components/ChannelList.js?v=3"></script>
@@ -1109,21 +1109,8 @@
   <script src="/js/pages/SeriesPage.js?v=1"></script>
   <script src="/js/pages/Settings.js?v=2"></script>
   <script src="/js/pages/WatchPage.js?v=2"></script>
-  <script src="/js/app.js?v=4"></script>
-  <script>
-    // Check for SSO token in URL
-    (function () {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      if (token) {
-        console.log('SSO Login successful, saving token...');
-        localStorage.setItem('authToken', token);
-        // Clean URL without reloading
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-      }
-    })();
-  </script>
+  <script src="/js/app.js?v=5"></script>
+
 </body>
 
 </html>

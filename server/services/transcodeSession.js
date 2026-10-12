@@ -1,3 +1,4 @@
+const { redactUrl, redactText, validateHttpUrl, FFMPEG_PROTOCOL_WHITELIST } = require('./urlSecurity');
 /**
  * Transcode Session Service
  * 
@@ -57,6 +58,7 @@ class TranscodeSession extends EventEmitter {
         super();
         this.id = generateSessionId();
         this.url = url;
+        this.ownerId = options.ownerId ?? null;
         this.dir = path.join(CACHE_DIR, this.id);
         this.playlistPath = path.join(this.dir, 'stream.m3u8');
         this.process = null;
@@ -89,7 +91,7 @@ class TranscodeSession extends EventEmitter {
         }
 
         this.status = 'starting';
-        console.log(`[TranscodeSession ${this.id}] Starting session for: ${this.url}`);
+        console.log(`[TranscodeSession ${this.id}] Starting session for: ${redactUrl(this.url)}`);
 
         // Create session directory
         try {
@@ -103,7 +105,7 @@ class TranscodeSession extends EventEmitter {
         // Build FFmpeg arguments for HLS output
         const args = this.buildFFmpegArgs();
 
-        console.log(`[TranscodeSession ${this.id}] Command: ${this.options.ffmpegPath} ${args.join(' ')}`);
+        console.log(`[TranscodeSession ${this.id}] Command: ${this.options.ffmpegPath} ${redactText(args.join(' '))}`);
 
         try {
             this.process = spawn(this.options.ffmpegPath, args, {
@@ -127,7 +129,7 @@ class TranscodeSession extends EventEmitter {
                 if (lines.length > 1) {
                     lines.slice(0, -1).forEach(line => {
                         if (line.trim()) {
-                            console.log(`[FFmpeg ${this.id}] ${line}`);
+                            console.log(`[FFmpeg ${this.id}] ${redactText(line)}`);
                         }
                     });
                     stderrBuffer = lines[lines.length - 1];
@@ -150,7 +152,7 @@ class TranscodeSession extends EventEmitter {
 
             // Handle spawn errors
             this.process.on('error', (err) => {
-                console.error(`[TranscodeSession ${this.id}] FFmpeg error:`, err);
+                console.error(`[TranscodeSession ${this.id}] FFmpeg error:`, redactText(err.message));
                 this.status = 'error';
                 this.error = err.message;
                 this.emit('error', err);
@@ -184,6 +186,7 @@ class TranscodeSession extends EventEmitter {
         const args = [
             '-hide_banner',
             '-loglevel', 'warning',
+            '-protocol_whitelist', FFMPEG_PROTOCOL_WHITELIST,
             '-user_agent', this.options.userAgent,
         ];
 
@@ -661,6 +664,7 @@ class TranscodeSession extends EventEmitter {
  * Create a new transcode session
  */
 async function createSession(url, options = {}) {
+    validateHttpUrl(url);
     await ensureCacheDir();
     const session = new TranscodeSession(url, options);
     sessions.set(session.id, session);
@@ -670,8 +674,9 @@ async function createSession(url, options = {}) {
 /**
  * Get an existing session by ID
  */
-function getSession(sessionId) {
+function getSession(sessionId, ownerId = null) {
     const session = sessions.get(sessionId);
+    if (session && ownerId !== null && session.ownerId !== ownerId) return null;
     if (session) {
         session.touch();
     }
@@ -682,26 +687,22 @@ function getSession(sessionId) {
  * Get or create a session for a URL (reuses existing if still valid)
  */
 async function getOrCreateSession(url, options = {}) {
-    // Check for existing session with same URL
-    for (const session of sessions.values()) {
-        if (session.url === url && session.status === 'running') {
-            session.touch();
-            return session;
-        }
-    }
-    // Create new session
+    // A URL cannot identify an account or its processing settings.
     return createSession(url, options);
 }
 
 /**
  * Stop and remove a session
  */
-async function removeSession(sessionId) {
+async function removeSession(sessionId, ownerId = null) {
     const session = sessions.get(sessionId);
+    if (session && ownerId !== null && session.ownerId !== ownerId) return false;
     if (session) {
         await session.cleanup();
         sessions.delete(sessionId);
+        return true;
     }
+    return false;
 }
 
 /**
@@ -760,7 +761,7 @@ function startCleanupInterval() {
 function getAllSessions() {
     return Array.from(sessions.values()).map(s => ({
         id: s.id,
-        url: s.url,
+        url: redactUrl(s.url),
         status: s.status,
         startTime: s.startTime,
         lastAccess: s.lastAccess,

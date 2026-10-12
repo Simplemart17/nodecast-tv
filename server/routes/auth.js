@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const auth = require('../auth');
+const { requestLimit } = require('../services/requestLimits');
+const authTokens = require('../services/authTokens');
+const loginLimit = requestLimit(20);
 
 // Configure Passport strategies
 auth.configureLocalStrategy(
@@ -41,8 +44,8 @@ router.get('/oidc/callback',
         // Successful authentication
         const token = auth.generateToken(req.user);
 
-        // Redirect to hompage with token
-        res.redirect(`/?token=${token}`);
+        auth.setAuthCookie(req, res, token);
+        req.session.regenerate(error => error ? res.status(500).json({ error: 'Login failed' }) : res.redirect('/'));
     }
 );
 
@@ -52,7 +55,7 @@ router.get('/oidc/callback',
  */
 router.get('/setup-required', async (req, res) => {
     try {
-        const userCount = await db.users.count();
+        const userCount = (await db.checkHealth()).users.length;
         res.json({ setupRequired: userCount === 0 });
     } catch (err) {
         console.error('Error in /setup-required:', err);
@@ -64,9 +67,9 @@ router.get('/setup-required', async (req, res) => {
  * Initial setup - Create admin user
  * POST /api/auth/setup
  */
-router.post('/setup', async (req, res) => {
+router.post('/setup', loginLimit, async (req, res) => {
     try {
-        const userCount = await db.users.count();
+        const userCount = (await db.checkHealth()).users.length;
 
         // Check if setup already done
         if (userCount > 0) {
@@ -75,11 +78,11 @@ router.post('/setup', async (req, res) => {
 
         const { username, password } = req.body;
 
-        if (!username || !password) {
+        if (typeof username !== 'string' || !username.trim() || username.length > 64 || typeof password !== 'string') {
             return res.status(400).json({ error: 'Username and password required' });
         }
 
-        if (password.length < 6) {
+        if (password.length < 6 || Buffer.byteLength(password) > 72) {
             return res.status(400).json({ error: 'Password must be at least 6 characters' });
         }
 
@@ -89,10 +92,11 @@ router.post('/setup', async (req, res) => {
             username,
             passwordHash,
             role: 'admin'
-        });
+        }, { initialSetup: true });
 
         // Generate token for immediate login
         const token = auth.generateToken(adminUser);
+        auth.setAuthCookie(req, res, token);
 
         res.status(201).json({
             message: 'Admin user created successfully',
@@ -109,7 +113,10 @@ router.post('/setup', async (req, res) => {
  * Login with Passport Local Strategy
  * POST /api/auth/login
  */
-router.post('/login', (req, res, next) => {
+router.post('/login', loginLimit, (req, res, next) => {
+    if (typeof req.body.username !== 'string' || typeof req.body.password !== 'string' || req.body.password.length > 1024) {
+        return res.status(400).json({ error: 'Username and password required' });
+    }
     auth.passport.authenticate('local', { session: false }, (err, user, info) => {
         if (err) {
             console.error('Login error:', err);
@@ -122,6 +129,7 @@ router.post('/login', (req, res, next) => {
 
         // Generate JWT token
         const token = auth.generateToken(user);
+        auth.setAuthCookie(req, res, token);
 
         res.json({
             token,
@@ -139,9 +147,17 @@ router.post('/login', (req, res, next) => {
  * POST /api/auth/logout
  */
 router.post('/logout', (req, res) => {
-    // With JWT, logout is handled client-side by removing the token
-    // This endpoint exists for consistency and future server-side token blacklisting
+    const payload = auth.verifyToken(auth.extractToken(req));
+    if (payload) authTokens.revoke(payload);
+    auth.clearAuthCookie(req, res);
+    if (req.session) req.session.destroy(() => {});
     res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// Exchange a valid API token for a browser cookie during migration.
+router.post('/session', auth.requireAuth, (req, res) => {
+    auth.setAuthCookie(req, res, auth.extractToken(req));
+    res.json({ success: true });
 });
 
 /**
