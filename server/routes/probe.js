@@ -133,6 +133,8 @@ function analyzeProbeResult(probeResult, url) {
     return {
         video: videoCodec,
         audio: audioCodec,
+        duration: Number.isFinite(Number(format.duration)) && Number(format.duration) > 0
+            ? Number(format.duration) : 0,
         audioCodecs: streams.filter(s => s.codec_type === 'audio')
             .map(s => s.codec_name?.toLowerCase() || 'unknown'),
         width: videoStream?.width || 0,
