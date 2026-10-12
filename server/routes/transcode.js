@@ -192,7 +192,7 @@ router.get('/', async (req, res) => {
         '-err_detect', 'ignore_err',
         // Limit max demux delay to prevent buffering issues
         '-max_delay', '2000000',
-        '-http_persistent', '0',
+        '-multiple_requests', '0',
         // Reconnect settings for network drops (useful for live streams)
         '-reconnect', '1',
         '-reconnect_streamed', '1',
