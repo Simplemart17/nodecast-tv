@@ -52,5 +52,8 @@ RUN mkdir -p /app/data /app/transcode-cache && chmod 777 /app/transcode-cache
 # Expose port
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["node", "scripts/healthcheck.cjs"]
+
 # Start server
 CMD ["node", "server/index.js"]

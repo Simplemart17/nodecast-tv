@@ -523,4 +523,4 @@ const users = {
   }
 };
 
-module.exports = { loadDb, saveDb, sources, hiddenItems, favorites, settings, users, getDefaultSettings, getUserAgent, USER_AGENT_PRESETS };
+module.exports = { loadDb, saveDb, checkHealth: readDbForMutation, sources, hiddenItems, favorites, settings, users, getDefaultSettings, getUserAgent, USER_AGENT_PRESETS };

@@ -8,6 +8,7 @@ const syncService = require('./services/syncService');
 require('./db');
 
 const app = express();
+app.locals.ready = false;
 const PORT = process.env.PORT || 3000;
 
 // Trust proxy headers (X-Forwarded-Proto, X-Forwarded-For, etc.)
@@ -154,6 +155,7 @@ async function loadPlugins() {
 
 // Graceful shutdown handler for plugins with shutdown hooks
 process.on('SIGTERM', async () => {
+    app.locals.ready = false;
     console.log('SIGTERM received, shutting down plugins...');
     for (const { name, plugin } of loadedPlugins) {
         if (plugin && typeof plugin.shutdown === 'function') {
@@ -169,6 +171,7 @@ process.on('SIGTERM', async () => {
 });
 
 // API Routes
+app.get('/api/health', require('./services/health'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/sources', require('./routes/sources'));
 app.use('/api/proxy', require('./routes/proxy'));
@@ -205,6 +208,7 @@ app.listen(PORT, async () => {
     await loadPlugins().catch(err => {
         console.error('Plugin initialization failed:', err);
     });
+    app.locals.ready = true;
 
     // Trigger background sync with delay to allow server to settle
     setTimeout(async () => {
