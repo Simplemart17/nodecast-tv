@@ -1,5 +1,6 @@
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
+const { validateHttpUrl } = require('./urlSecurity');
 
 const MAX_HLS_MANIFEST_BYTES = 5 * 1024 * 1024;
 
@@ -46,6 +47,8 @@ function rewriteManifest(manifest, sourceUrl, proxyPath) {
 // Adapted from NodeCast TV Plus's streaming proxy. Binary media is never
 // buffered in full; only manifests are collected, under a fixed size limit.
 async function proxyStream(req, res) {
+    try { validateHttpUrl(req.query.url); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     let url;
     try {
         const raw = req.query.url;

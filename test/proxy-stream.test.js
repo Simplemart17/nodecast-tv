@@ -1,3 +1,4 @@
+process.env.ALLOW_LOCAL_MEDIA_URLS = 'true'; // Local HTTP origin fixtures only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

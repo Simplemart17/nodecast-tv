@@ -1,5 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const { validateHttpUrl } = require('../services/urlSecurity');
+router.use((req, res, next) => {
+    if (req.query.url !== undefined) {
+        try { validateHttpUrl(req.query.url); }
+        catch (error) { return res.status(400).json({ error: error.message }); }
+    }
+    next();
+});
 const { sources } = require('../db');
 const { getDb } = require('../db/sqlite'); // Import SQLite
 const xtreamApi = require('../services/xtreamApi');

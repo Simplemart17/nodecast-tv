@@ -332,6 +332,16 @@ nodecast-tv/
 └── data/                # Persistent storage (content.db, playlists)
 ```
 
+## Authentication and reverse proxies
+
+Browser playback and API requests use an HttpOnly authentication cookie. API clients can also send the token returned by `/api/auth/login` as `Authorization: Bearer <token>`. Existing accounts and settings are retained, but clients must sign in again after upgrading from the older token format. Logout revokes that login; changing a password invalidates all of that account's existing tokens.
+
+Random authentication secrets are created once in `data/security.json` and survive restarts. Keep that file with the persistent data volume. `JWT_SECRET` and `SESSION_SECRET` can override the generated secrets for managed deployments.
+
+For reverse proxies, set `APP_ORIGIN` to the external origin (for example `https://tv.example.com`) and `TRUST_PROXY` to the proxy's IP address or CIDR when it is outside the default loopback/private networks. HTTPS requests receive Secure cookies; `AUTH_COOKIE_SECURE=true` enforces this when TLS is terminated upstream.
+
+HTTP(S) media inputs reject control characters, local-file protocols, loopback and link-local/metadata addresses. Local IPTV services on ordinary LAN addresses remain supported. Set `ALLOW_LOCAL_MEDIA_URLS=true` when a provider deliberately runs on localhost; metadata addresses remain blocked. This URL validation complements deployment network restrictions; it does not resolve or pin every destination through nested FFmpeg requests.
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.

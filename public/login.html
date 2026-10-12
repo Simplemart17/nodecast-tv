@@ -299,7 +299,7 @@
                 }
 
                 // Store token
-                localStorage.setItem('authToken', data.token);
+                localStorage.removeItem('authToken');
 
                 // Redirect to main app (replace history to prevent back button issues)
                 window.location.replace('/');
