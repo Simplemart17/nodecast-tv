@@ -133,6 +133,8 @@ function analyzeProbeResult(probeResult, url) {
     return {
         video: videoCodec,
         audio: audioCodec,
+        audioCodecs: streams.filter(s => s.codec_type === 'audio')
+            .map(s => s.codec_name?.toLowerCase() || 'unknown'),
         width: videoStream?.width || 0,
         height: videoStream?.height || 0,
         audioChannels: audioStream?.channels || 0, // For Smart Audio Copy
