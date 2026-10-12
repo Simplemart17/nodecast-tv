@@ -9,9 +9,8 @@ const db = require('../db');
  * FFmpeg accepts a wide variety of protocol handlers (file://, concat:,
  * subfile:, data:, pipe:, crypto:, async:, cache:, ...). Several of them
  * read from the local filesystem or compose existing protocols, so they
- * must NOT be reachable from a request parameter — otherwise an attacker
- * who can call /api/remux can read arbitrary local files via the streamed
- * response.
+ * must not be reachable from a request parameter. Remux inputs should only
+ * reference network streams, never local files or protocol wrappers.
  *
  * Only plain http/https stream URLs are valid inputs here.
  */
@@ -23,11 +22,13 @@ const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:']);
  * if a future code path forwarded a different URL, ffmpeg itself would
  * refuse to touch local files / arbitrary demuxer-level protocols.
  *
- * - file/concat/subfile/pipe/data/crypto/async/cache are intentionally absent.
+ * - file/concat/subfile/pipe/data/async/cache are intentionally absent.
  * - tls/tcp are needed for https; https/http are obvious.
  * - hls is needed so the demuxer can follow HLS playlists.
+ * - crypto is needed for AES-encrypted HLS segments. Nested file access
+ *   remains blocked, and top-level crypto URLs are rejected by the validator.
  */
-const FFMPEG_PROTOCOL_WHITELIST = 'http,https,tls,tcp,hls';
+const FFMPEG_PROTOCOL_WHITELIST = 'http,https,tls,tcp,hls,crypto';
 
 /**
  * Validate a user-supplied stream URL.
@@ -98,7 +99,7 @@ router.get('/', async (req, res) => {
         '-err_detect', 'ignore_err',
         // Limit max demux delay to prevent buffering issues with bad timestamps
         '-max_delay', '5000000',
-        '-http_persistent', '0',
+        '-multiple_requests', '0',
         // Reconnect settings for network drops
         '-reconnect', '1',
         '-reconnect_streamed', '1',
