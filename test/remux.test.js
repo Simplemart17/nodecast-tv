@@ -112,6 +112,22 @@ test('remux accepts HTTP(S), preserves query credentials, and restricts nested p
     }
 });
 
+test('remux filters only AAC output tracks and rejects malformed codec hints', async t => {
+    const { base, calls } = await routeFixture(t);
+    const url = `${base}/api/remux?url=http%3A%2F%2Fprovider.test%2Fmedia.ts`;
+    assert.equal((await request(`${url}&audioCodecs=mp3%2CAAC%2Cunknown%2Caac%2Cac3`)).status, 200);
+    const args = calls.at(-1).args;
+    assert.equal(args[args.indexOf('-bsf:a:1') + 1], 'aac_adtstoasc');
+    assert.equal(args[args.indexOf('-bsf:a:3') + 1], 'aac_adtstoasc');
+    assert.equal(args.filter(arg => arg.startsWith('-bsf:a')).length, 2);
+    for (const query of ['audioCodecs=aac&audioCodecs=mp3', 'audioCodecs[x]=aac',
+        'audioCodecs=aac,,mp3', 'audioCodecs=-i',
+        `audioCodecs=${Array(17).fill('aac').join(',')}`]) {
+        assert.equal((await request(`${url}&${query}`)).status, 400, query);
+    }
+    assert.equal(calls.length, 1);
+});
+
 function findFFmpeg() {
     // Match server/index.js: prefer system FFmpeg, then the optional binary.
     if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0) return 'ffmpeg';
@@ -153,11 +169,17 @@ test('real FFmpeg remuxes encrypted HLS over HTTP and blocks local HLS segments'
             '-c:v', 'libx264', '-threads', '1', '-preset', 'ultrafast', '-tune', 'zerolatency',
             '-c:a', 'libmp3lame', '-f', 'mpegts', sample]);
         assert.equal(generated.code, 0, generated.stderr);
+        const mixedSample = path.join(dir, 'mixed.ts');
+        const mixedGenerated = await runFFmpeg(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y',
+            '-i', sample, '-map', '0:v', '-map', '0:a', '-map', '0:a',
+            '-c:v', 'copy', '-c:a:0', 'libmp3lame', '-c:a:1', 'aac', '-f', 'mpegts', mixedSample]);
+        assert.equal(mixedGenerated.code, 0, mixedGenerated.stderr);
         const media = fs.readFileSync(sample), key = Buffer.alloc(16, 0x5a), iv = Buffer.alloc(16);
         const cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
         const header = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-MEDIA-SEQUENCE:0\n';
         const resources = {
             '/media.ts': media,
+            '/mixed.ts': fs.readFileSync(mixedSample),
             '/key.bin': key,
             '/encrypted.ts': Buffer.concat([cipher.update(media), cipher.final()]),
             '/plain.m3u8': Buffer.from(`${header}#EXTINF:12,\nmedia.ts\n#EXT-X-ENDLIST\n`),
@@ -174,9 +196,10 @@ test('real FFmpeg remuxes encrypted HLS over HTTP and blocks local HLS segments'
         t.after(() => new Promise(resolve => server.close(resolve)));
         const base = await listen(server);
         const { base: routeBase, calls } = await routeFixture(t);
-        for (const file of ['media.ts', 'plain.m3u8', 'encrypted.m3u8', 'local.m3u8']) {
+        for (const file of ['media.ts', 'mixed.ts', 'plain.m3u8', 'encrypted.m3u8', 'local.m3u8']) {
             const url = `${base}/${file}`;
-            assert.equal((await request(`${routeBase}/api/remux?url=${encodeURIComponent(url)}`)).status, 200);
+            const hints = file === 'mixed.ts' ? '&audioCodecs=mp3,aac' : '';
+            assert.equal((await request(`${routeBase}/api/remux?url=${encodeURIComponent(url)}${hints}`)).status, 200);
             const result = await runFFmpeg(ffmpeg, calls.at(-1).args);
             assert.equal(result.timedOut, false, file);
             if (file === 'local.m3u8') {
@@ -187,6 +210,13 @@ test('real FFmpeg remuxes encrypted HLS over HTTP and blocks local HLS segments'
                 assert.equal(result.code, 0, `${file} (${ffmpeg}, signal=${result.signal}): ${result.stderr}`);
                 assert.ok(result.stdout.includes(Buffer.from('ftyp')), `${file}: no MP4 output`);
                 assert.ok(result.stdout.includes(Buffer.from('mdat')), `${file}: no media packets`);
+                if (file === 'mixed.ts') {
+                    const output = path.join(dir, 'mixed.mp4');
+                    fs.writeFileSync(output, result.stdout);
+                    const decoded = await runFFmpeg(ffmpeg, ['-hide_banner', '-loglevel', 'error',
+                        '-i', output, '-map', '0:a', '-f', 'null', '-']);
+                    assert.equal(decoded.code, 0, decoded.stderr);
+                }
             }
         }
     });

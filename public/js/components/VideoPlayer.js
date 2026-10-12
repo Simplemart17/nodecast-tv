@@ -859,6 +859,8 @@ class VideoPlayer {
 
             // Stop current playback
             this.stop();
+            const playbackGeneration = this.playbackGeneration;
+            let probeInfo = null;
             this.updateTranscodeStatus('hidden');
 
             // Hide "select a channel" overlay
@@ -877,6 +879,8 @@ class VideoPlayer {
                 try {
                     const probeRes = await fetch(`/api/probe?url=${encodeURIComponent(streamUrl)}`);
                     const info = await probeRes.json();
+                    if (this.playbackGeneration !== playbackGeneration) return;
+                    probeInfo = info;
                     console.log(`[Player] Probe result: video=${info.video}, audio=${info.audio}, ${info.width}x${info.height}, compatible=${info.compatible}`);
 
                     // Store probe result for quality badge display
@@ -936,7 +940,7 @@ class VideoPlayer {
                         // Raw .ts container - use remux
                         console.log('[Player] Auto: Using remux (.ts container)');
                         this.updateTranscodeStatus('remuxing', 'Remux (Auto)');
-                        const remuxUrl = `/api/remux?url=${encodeURIComponent(streamUrl)}`;
+                        const remuxUrl = this.getRemuxUrl(streamUrl, info.audioCodecs || [info.audio]);
                         this.currentUrl = remuxUrl;
                         this.video.src = remuxUrl;
                         this.video.play().catch(e => {
@@ -1055,7 +1059,17 @@ class VideoPlayer {
                 console.log('[Player] Force Remux enabled. Routing through FFmpeg remux...');
                 console.log('[Player] Stream type:', isRawTs ? 'Raw TS' : 'Extension-less (assumed TS)');
                 this.updateTranscodeStatus('remuxing', 'Remux (Force)');
-                const remuxUrl = this.getRemuxUrl(streamUrl);
+                if (!probeInfo) {
+                    try {
+                        const response = await fetch(`/api/probe?url=${encodeURIComponent(streamUrl)}`);
+                        probeInfo = await response.json();
+                    } catch (error) {
+                        console.warn('[Player] Remux probe failed:', error.message);
+                    }
+                }
+                if (this.playbackGeneration !== playbackGeneration) return;
+                const remuxUrl = this.getRemuxUrl(streamUrl, probeInfo?.audioCodecs || (probeInfo?.audio ? [probeInfo.audio] : []));
+                this.currentUrl = remuxUrl;
                 this.video.src = remuxUrl;
                 this.video.play().catch(e => {
                     if (e.name !== 'AbortError') console.log('[Player] Autoplay prevented:', e);
@@ -1369,8 +1383,8 @@ class VideoPlayer {
      * Get remuxed URL for a stream (container conversion only, no re-encoding)
      * Used for raw .ts streams that browsers can't play directly
      */
-    getRemuxUrl(url) {
-        return `/api/remux?url=${encodeURIComponent(url)}`;
+    getRemuxUrl(url, audioCodecs = []) {
+        return `/api/remux?url=${encodeURIComponent(url)}&audioCodecs=${encodeURIComponent(audioCodecs.join(','))}`;
     }
 
     /**
@@ -1389,6 +1403,7 @@ class VideoPlayer {
      * Stop playback
      */
     stop() {
+        this.playbackGeneration = (this.playbackGeneration || 0) + 1;
         // Stop any running transcode session first
         this.stopTranscodeSession();
 

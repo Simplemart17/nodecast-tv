@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
 const db = require('../db');
+const { parseAudioCodecs, audioFilterArgs } = require('../services/remuxAudio');
 
 /**
  * Allowed input URL schemes for the remux endpoint.
@@ -70,6 +71,13 @@ router.get('/', async (req, res) => {
         return res.status(400).json({ error: 'URL must be an http:// or https:// stream URL' });
     }
 
+    let audioCodecs;
+    try {
+        audioCodecs = parseAudioCodecs(req.query.audioCodecs);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+
     const ffmpegPath = req.app.locals.ffmpegPath || 'ffmpeg';
 
     // Get User-Agent from settings
@@ -118,9 +126,8 @@ router.get('/', async (req, res) => {
         '-c', 'copy',
         // Ensure extradata is correctly extracted/converted (fixes Annex B -> AVCC issues in Firefox)
         '-bsf:v', 'dump_extra',
-        // NOTE: We intentionally do NOT use -bsf:a aac_adtstoasc here
-        // That filter only works for AAC audio and breaks AC3/EAC3/MP3.
-        // If AAC audio from MPEG-TS fails in MP4, use /api/transcode instead.
+        // Convert ADTS only on probed AAC tracks; leave MP3/AC3/EAC3 untouched.
+        ...audioFilterArgs(audioCodecs),
         // Handle timestamp discontinuities at output
         '-fps_mode', 'passthrough',
         '-max_muxing_queue_size', '1024',
