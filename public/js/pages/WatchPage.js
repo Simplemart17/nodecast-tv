@@ -602,24 +602,13 @@ class WatchPage {
             maxMaxBufferLength: 60,
             startLevel: -1,
             enableWorker: true,
+            renderTextTracksNatively: false,
         });
 
         const hls = this.hls, generation = this.playbackGeneration;
+        this.getCaptionTracks().bindHls(hls, Hls.Events);
         this.hls.loadSource(url);
         this.hls.attachMedia(this.video);
-
-        // Listen for subtitle track updates
-        this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
-            if (this.hls !== hls || this.playbackGeneration !== generation) return;
-            console.log('[WatchPage] Subtitle tracks updated:', data.subtitleTracks);
-            // Wait a moment for native text tracks to populate
-            setTimeout(() => { if (this.hls === hls && this.playbackGeneration === generation) this.updateCaptionsTracks(); }, 100);
-        });
-
-        this.hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (event, data) => {
-            if (this.hls !== hls || this.playbackGeneration !== generation) return;
-            console.log('[WatchPage] Subtitle track switched:', data);
-        });
 
         this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
             if (this.hls !== hls || this.playbackGeneration !== generation) return;
@@ -684,6 +673,8 @@ class WatchPage {
             this.hls.destroy();
             this.hls = null;
         }
+        this.getCaptionTracks().reset();
+        this.closeCaptionsMenu();
         if (this.video) {
             this.video.pause();
             this.video.src = '';
@@ -998,57 +989,16 @@ class WatchPage {
         this.captionsMenuOpen = false;
     }
 
-    updateCaptionsTracks() {
-        if (!this.captionsList || !this.video) return;
-
-        // Build list of available text tracks
-        const tracks = this.video.textTracks;
-        let html = '<button class="captions-option" data-index="-1">Off</button>';
-
-        for (let i = 0; i < tracks.length; i++) {
-            const track = tracks[i];
-            if (track.kind === 'subtitles' || track.kind === 'captions') {
-                const label = track.label || track.language || `Track ${i + 1}`;
-                const isActive = track.mode === 'showing';
-                html += `<button class="captions-option ${isActive ? 'active' : ''}" data-index="${i}">${label}</button>`;
-            }
+    getCaptionTracks() {
+        if (!this.captionTracks) {
+            this.captionTracks = new CaptionTracks(this.video, () => this.updateCaptionsTracks());
         }
-
-        // Check if any track is active, if not mark "Off" as active
-        let anyActive = false;
-        for (let i = 0; i < tracks.length; i++) {
-            if (tracks[i].mode === 'showing') anyActive = true;
-        }
-        if (!anyActive) {
-            html = html.replace('class="captions-option"', 'class="captions-option active"');
-        }
-
-        this.captionsList.innerHTML = html;
-
-        // Add click handlers
-        this.captionsList.querySelectorAll('.captions-option').forEach(btn => {
-            btn.addEventListener('click', () => this.selectCaptionTrack(parseInt(btn.dataset.index)));
-        });
+        return this.captionTracks;
     }
 
-    selectCaptionTrack(index) {
-        if (!this.video) return;
-
-        const tracks = this.video.textTracks;
-
-        // Disable all tracks
-        for (let i = 0; i < tracks.length; i++) {
-            tracks[i].mode = 'hidden';
-        }
-
-        // Enable selected track
-        if (index >= 0 && index < tracks.length) {
-            tracks[index].mode = 'showing';
-        }
-
-        // Update UI
-        this.updateCaptionsTracks();
-        this.closeCaptionsMenu();
+    updateCaptionsTracks() {
+        if (!this.captionsList || !this.video) return;
+        this.getCaptionTracks().render(this.captionsList, () => this.closeCaptionsMenu());
     }
 
     // === Overlay Auto-Hide ===

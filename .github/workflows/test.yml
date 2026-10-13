@@ -21,4 +21,8 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
+      - name: Install browser for subtitle regression tests
+        run: npx playwright install --with-deps chromium
       - run: npm test
+        env:
+          NODECAST_BROWSER_TESTS: '1'

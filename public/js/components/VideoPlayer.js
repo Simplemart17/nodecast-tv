@@ -142,7 +142,7 @@ class VideoPlayer {
             // Caption/Subtitle settings
             enableCEA708Captions: true,    // Enable CEA-708 closed captions
             enableWebVTT: true,            // Enable WebVTT subtitles
-            renderTextTracksNatively: true // Use native browser rendering for text tracks
+            renderTextTracksNatively: false // CaptionTracks owns removable browser tracks
         };
     }
 
@@ -531,70 +531,16 @@ class VideoPlayer {
     /**
      * Update available caption tracks in the menu
      */
-    updateCaptionsTracks() {
-        if (!this.captionsList) return;
-
-        // Clear existing list (keep only Off option)
-        this.captionsList.innerHTML = '<button class="captions-option" data-index="-1">Off</button>';
-
-        // Add tracks
-        if (this.video.textTracks && this.video.textTracks.length > 0) {
-            let hasActiveTrack = false;
-
-            for (let i = 0; i < this.video.textTracks.length; i++) {
-                const track = this.video.textTracks[i];
-                const btn = document.createElement('button');
-                btn.className = 'captions-option';
-                btn.textContent = track.label || `Track ${i + 1} (${track.language || 'unknown'})`;
-                btn.dataset.index = i;
-
-                if (track.mode === 'showing') {
-                    btn.classList.add('active');
-                    // Add checkmark
-                    btn.innerHTML += ' <span style="float: right;">✓</span>';
-                    hasActiveTrack = true;
-                }
-
-                btn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.selectCaptionTrack(i);
-                };
-
-                this.captionsList.appendChild(btn);
-            }
-
-            // Handle "Off" button state
-            const offBtn = this.captionsList.querySelector('[data-index="-1"]');
-            if (offBtn) {
-                if (!hasActiveTrack) {
-                    offBtn.classList.add('active');
-                    offBtn.innerHTML += ' <span style="float: right;">✓</span>';
-                }
-                offBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.selectCaptionTrack(-1);
-                };
-            }
+    getCaptionTracks() {
+        if (!this.captionTracks) {
+            this.captionTracks = new CaptionTracks(this.video, () => this.updateCaptionsTracks());
         }
+        return this.captionTracks;
     }
 
-    /**
-     * Select a caption track
-     */
-    selectCaptionTrack(index) {
-        if (!this.video.textTracks) return;
-
-        // Turn off all tracks
-        for (let i = 0; i < this.video.textTracks.length; i++) {
-            this.video.textTracks[i].mode = 'hidden'; // or 'disabled'
-        }
-
-        // Turn on selected track
-        if (index >= 0 && index < this.video.textTracks.length) {
-            this.video.textTracks[index].mode = 'showing';
-        }
-
-        this.closeCaptionsMenu();
+    updateCaptionsTracks() {
+        if (!this.captionsList || !this.video) return;
+        this.getCaptionTracks().render(this.captionsList, () => this.closeCaptionsMenu());
     }
 
     init() {
@@ -756,16 +702,7 @@ class VideoPlayer {
                 }
             });
 
-            // Listen for subtitle track updates
-            this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
-                console.log('Subtitle tracks updated:', data.subtitleTracks);
-                // Wait a moment for native text tracks to populate
-                setTimeout(() => this.updateCaptionsTracks(), 100);
-            });
-
-            this.hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (event, data) => {
-                console.log('Subtitle track switched:', data);
-            });
+            this.getCaptionTracks().bindHls(this.hls, Hls.Events);
 
             this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 this.video.play().catch(e => console.log('Autoplay prevented:', e));
@@ -878,27 +815,7 @@ class VideoPlayer {
                     this.currentStreamInfo = info;
                     this.updateQualityBadge();
 
-                    // Handle subtitles from probe result
-                    // Clear existing remote tracks (from previous streams)
-                    const oldTracks = this.video.querySelectorAll('track');
-                    oldTracks.forEach(t => t.remove());
-
-                    if (info.subtitles && info.subtitles.length > 0) {
-                        console.log(`[Player] Found ${info.subtitles.length} subtitle tracks`);
-                        info.subtitles.forEach(sub => {
-                            const track = document.createElement('track');
-                            track.kind = 'subtitles';
-                            track.label = sub.title;
-                            track.srclang = sub.language;
-                            track.src = `/api/subtitle?url=${encodeURIComponent(streamUrl)}&index=${sub.index}`;
-                            this.video.appendChild(track);
-                        });
-
-                        // Force update of captions menu if it's open
-                        if (this.captionsMenuOpen) {
-                            this.updateCaptionsTracks();
-                        }
-                    }
+                    this.getCaptionTracks().setProbe(info, streamUrl);
 
                     if (info.needsTranscode || this.settings.upscaleEnabled) {
                         // Incompatible audio (AC3/EAC3/DTS) or Upscaling enabled - use transcode session
@@ -935,6 +852,8 @@ class VideoPlayer {
                         this.updateTranscodeStatus('remuxing', 'Remux (Auto)');
                         const remuxUrl = this.getRemuxUrl(streamUrl, info.audioCodecs || [info.audio]);
                         this.currentUrl = remuxUrl;
+                        this.getCaptionTracks().setProbe(probeInfo, streamUrl);
+                        this.getCaptionTracks().useNative();
                         this.video.src = remuxUrl;
                         this.video.play().catch(e => {
                             if (e.name !== 'AbortError') console.log('[Player] Autoplay prevented:', e);
@@ -1038,6 +957,8 @@ class VideoPlayer {
                 if (this.playbackGeneration !== playbackGeneration) return;
                 const remuxUrl = this.getRemuxUrl(streamUrl, probeInfo?.audioCodecs || (probeInfo?.audio ? [probeInfo.audio] : []));
                 this.currentUrl = remuxUrl;
+                this.getCaptionTracks().setProbe(probeInfo, streamUrl);
+                this.getCaptionTracks().useNative();
                 this.video.src = remuxUrl;
                 this.video.play().catch(e => {
                     if (e.name !== 'AbortError') console.log('[Player] Autoplay prevented:', e);
@@ -1073,6 +994,7 @@ class VideoPlayer {
                 // I'll inline the Hls init here as per original but mindful of proxy vs local
 
                 this.hls = new Hls(this.getHlsConfig());
+                this.getCaptionTracks().bindHls(this.hls, Hls.Events);
                 this.hls.loadSource(finalUrl);
                 this.hls.attachMedia(this.video);
 
@@ -1130,6 +1052,7 @@ class VideoPlayer {
                 this.video.canPlayType('application/vnd.apple.mpegurl') === 'maybe') {
                 // Priority 2: Native HLS support (Safari on iOS/macOS where HLS.js may not work)
                 this.updateTranscodeStatus('direct', 'Direct Native');
+                this.getCaptionTracks().useNative({ allowProbe: !looksLikeHls });
                 this.video.src = finalUrl;
                 this.video.play().catch(e => {
                     if (e.name === 'AbortError') return; // Ignore interruption by new load
@@ -1145,6 +1068,7 @@ class VideoPlayer {
             } else {
                 // Priority 3: Try direct playback for non-HLS streams
                 this.updateTranscodeStatus('direct', 'Direct Play');
+                this.getCaptionTracks().useNative();
                 this.video.src = finalUrl;
                 this.video.play().catch(e => {
                     if (e.name !== 'AbortError') console.log('Autoplay prevented:', e);
@@ -1179,6 +1103,7 @@ class VideoPlayer {
 
         this.hls = new Hls(this.getHlsConfig());
         const hls = this.hls, generation = this.playbackGeneration;
+        this.getCaptionTracks().bindHls(hls, Hls.Events);
         this.hls.loadSource(url);
         this.hls.attachMedia(this.video);
 
@@ -1383,6 +1308,8 @@ class VideoPlayer {
             this.hls.destroy();
             this.hls = null;
         }
+        this.getCaptionTracks().reset();
+        this.closeCaptionsMenu();
         this.video.pause();
         this.video.src = '';
         this.video.load();
