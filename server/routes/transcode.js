@@ -6,6 +6,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const db = require('../db');
 const { requireAdmin } = require('../auth');
+const { requestLimit } = require('../services/requestLimits');
+const startupLimit = requestLimit(30);
 const transcodeSession = require('../services/transcodeSession');
 
 /**
@@ -30,8 +32,17 @@ transcodeSession.startCleanupInterval();
  * POST /api/transcode/session
  * Body: { url: string, seekOffset?: number }
  */
-router.post('/session', async (req, res) => {
-    const { url, seekOffset, videoMode, videoCodec, audioCodec, audioChannels, videoHeight } = req.body;
+router.post('/session', startupLimit, async (req, res) => {
+    const { url, seekOffset, videoMode, videoCodec, audioCodec, audioChannels, videoHeight, playbackLeaseId, requestSequence, isLive } = req.body;
+    const normalizedSeek = Number(seekOffset ?? 0);
+    if (!Number.isFinite(normalizedSeek) || normalizedSeek < 0) return res.status(400).json({ error: "Invalid seek offset" });
+    let session = null, disconnected = false;
+    res.once("close", () => {
+        if (!res.writableEnded) {
+            disconnected = true;
+            if (session) transcodeSession.removeSession(session.id, req.user.id).catch(() => {});
+        }
+    });
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
@@ -43,11 +54,12 @@ router.post('/session', async (req, res) => {
     const userAgent = db.getUserAgent(settings);
 
     try {
-        const session = await transcodeSession.createSession(url, {
+        session = await transcodeSession.createSession(url, {
+            playbackLeaseId, requestSequence, isLive: isLive === true,
             ownerId: req.user.id,
             ffmpegPath,
             userAgent,
-            seekOffset: seekOffset || 0,
+            seekOffset: normalizedSeek,
             hwEncoder: settings.hwEncoder || 'software',
             maxResolution: settings.maxResolution || '1080p',
             quality: settings.quality || 'medium',
@@ -63,11 +75,13 @@ router.post('/session', async (req, res) => {
             videoHeight: videoHeight // source height from probe; used to cap max-resolution in JS
         });
 
+        if (disconnected) { await transcodeSession.removeSession(session.id, req.user.id); return; }
         await session.start();
 
         // Wait for playlist to be ready (first segments generated)
         const ready = await session.waitForPlaylist(15000);
 
+        if (disconnected || session.retired) { await transcodeSession.removeSession(session.id, req.user.id); return; }
         if (!ready) {
             await transcodeSession.removeSession(session.id);
             return res.status(500).json({ error: 'Transcoding failed to start', reason: 'Playlist not generated in time' });
@@ -80,9 +94,24 @@ router.post('/session', async (req, res) => {
         });
 
     } catch (err) {
+        if (session) await transcodeSession.removeSession(session.id, req.user.id);
+        if (disconnected || res.destroyed) return;
         console.error('[Transcode] Session creation failed:', redactText(err.message));
-        res.status(500).json({ error: 'Failed to create session', details: err.message });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Failed to create session' });
     }
+});
+
+router.delete('/lease', async (req, res) => {
+    try {
+        await transcodeSession.releasePlaybackLease(req.user.id, req.body.playbackLeaseId);
+        res.json({ success: true });
+    } catch (error) { res.status(error.statusCode || 500).json({ error: error.message }); }
+});
+router.post('/lease/heartbeat', (req, res) => {
+    try {
+        const found = transcodeSession.refreshPlaybackLease(req.user.id, req.body.playbackLeaseId);
+        res.status(found ? 200 : 404).json({ success: found });
+    } catch (error) { res.status(error.statusCode || 500).json({ error: error.message }); }
 });
 
 /**
@@ -130,7 +159,7 @@ router.get('/:sessionId/:segment', async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'video/MP2T');
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache forever (immutable)
+    res.setHeader('Cache-Control', 'private, max-age=31536000'); // Account-owned immutable segments.
     res.sendFile(segmentPath);
 });
 
@@ -165,7 +194,7 @@ router.get('/sessions', requireAdmin, (req, res) => {
  * Transcodes audio to AAC for browser compatibility while passing video through.
  * This fixes playback issues with Dolby/AC3/EAC3 audio that browsers can't decode.
  */
-router.get('/', async (req, res) => {
+router.get('/', startupLimit, async (req, res) => {
     const { url } = req.query;
     try { validateHttpUrl(url); } catch (error) { return res.status(400).json({ error: error.message }); }
     if (!url) {
@@ -258,7 +287,7 @@ router.get('/', async (req, res) => {
     });
 
     // Cleanup on client disconnect
-    req.on('close', () => {
+    res.on('close', () => {
         console.log('[Transcode] Client disconnected, killing FFmpeg process');
         ffmpeg.kill('SIGKILL');
     });

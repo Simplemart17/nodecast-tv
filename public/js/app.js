@@ -220,6 +220,8 @@ class App {
         logoutLink.addEventListener('click', async (e) => {
             e.preventDefault();
 
+            this.player.stop();
+            this.pages.watch.stop();
             await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
 
             localStorage.removeItem('authToken');
