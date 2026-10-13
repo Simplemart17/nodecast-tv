@@ -66,6 +66,8 @@ nodecast-tv is a modern, web-based IPTV player featuring Live TV, EPG, Movies (V
 
 You can run nodecast-tv easily using Docker.
 
+Container images are published to `ghcr.io/technomancer702/nodecast-tv` when a GitHub release is published. Use a version tag such as `v2.2.1` for the release: stable releases publish image tags `2.2.1`, `2.2`, and `latest`; prereleases publish their full version tag without updating `latest` or the minor-version alias. Branch pushes, tag pushes alone, and draft releases do not publish images.
+
 1.  Create a `docker-compose.yml` file (or copy the one from this repo):
 
     ```yaml
