@@ -432,7 +432,7 @@ class EpgGuide {
         // Build HTML structure - header is INSIDE scroll container for natural sync
         this.container.innerHTML = `
       <div class="epg-container" style="position: relative;">
-        <div class="epg-scroll-container" style="overflow: auto; max-height: calc(100vh - 200px);">
+        <div class="epg-scroll-container" style="overflow: auto; max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px);">
           <div class="epg-time-header">
             <div class="epg-header-corner"></div>
             <div class="epg-time-slots">

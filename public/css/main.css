@@ -284,17 +284,22 @@ h4 {
    ===================================================== */
 .main-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
 .page {
   display: none;
-  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
 .page.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 /* Empty State */
@@ -314,7 +319,8 @@ h4 {
    ===================================================== */
 .home-layout {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
@@ -563,10 +569,14 @@ h4 {
 /* Channel List */
 .channel-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-sm);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Explicitly allow vertical pan so iPad Safari doesn't intercept the
+     gesture for page-level scroll/zoom on the touch-only drawer. */
+  touch-action: pan-y;
 }
 
 .channel-group {
@@ -1042,6 +1052,8 @@ video::cue {
 
 .epg-grid {
   height: calc(100vh - var(--navbar-height) - 60px);
+  /* fallback */
+  height: calc(100dvh - var(--navbar-height) - 60px);
   overflow: hidden;
   overflow-y: auto;
   padding: var(--space-md);
@@ -1189,6 +1201,8 @@ video::cue {
   margin: 0 auto;
   padding: var(--space-lg);
   height: calc(100vh - var(--navbar-height));
+  /* fallback */
+  height: calc(100dvh - var(--navbar-height));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -1745,6 +1759,8 @@ kbd {
   display: flex;
   flex-direction: column;
   height: calc(100vh - var(--navbar-height) - 200px);
+  /* fallback */
+  height: calc(100dvh - var(--navbar-height) - 200px);
 }
 
 .content-browser-header {
@@ -1969,6 +1985,72 @@ kbd {
   }
 }
 
+/* Tablet portrait (touch-only): promote channel sidebar to drawer, narrow EPG column.
+   Uses pointer: coarse so iPad-with-trackpad keeps the desktop layout, and
+   orientation: portrait so iPads in landscape (which have room for the sidebar)
+   are unaffected. */
+@media (max-width: 1024px) and (pointer: coarse) and (orientation: portrait) {
+  :root {
+    --epg-sidebar-width: 160px;
+  }
+
+  /* Show floating channel toggle button */
+  .channel-toggle-btn {
+    display: flex;
+  }
+
+  /* Channel sidebar becomes a slide-out drawer */
+  .channel-sidebar {
+    position: fixed;
+    top: var(--navbar-height);
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    height: auto;
+    border-right: 1px solid var(--color-border);
+    border-bottom: none;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 90;
+    box-shadow: var(--shadow-lg);
+    visibility: hidden;
+  }
+
+  .channel-sidebar.active {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  /* Overlay behind drawer */
+  .channel-sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: var(--navbar-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 80;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .channel-sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+  }
+
+  /* Hide the desktop expand button — drawer uses the floating toggle instead */
+  .sidebar-expand-btn {
+    display: none !important;
+  }
+
+  /* Video player takes full width */
+  .player-section {
+    width: 100%;
+  }
+}
+
 @media (max-width: 768px) {
 
   /* Tablet/Mobile landscape */
@@ -2128,6 +2210,8 @@ kbd {
 
   .epg-grid {
     height: calc(100vh - var(--navbar-height) - 120px);
+    /* fallback */
+    height: calc(100dvh - var(--navbar-height) - 120px);
   }
 
   .epg-channel-info {
@@ -2162,6 +2246,8 @@ kbd {
     padding: var(--space-md);
     gap: var(--space-md);
     height: calc(100vh - var(--navbar-height) - 140px);
+    /* fallback */
+    height: calc(100dvh - var(--navbar-height) - 140px);
   }
 
   .movie-card,
@@ -2481,6 +2567,8 @@ kbd {
   .settings-container {
     padding: var(--space-sm);
     height: calc(100vh - var(--navbar-height));
+    /* fallback */
+    height: calc(100dvh - var(--navbar-height));
   }
 
   .settings-container h2 {
@@ -2867,6 +2955,8 @@ kbd {
   padding: var(--space-lg);
   overflow-y: auto;
   height: calc(100vh - 120px);
+  /* fallback */
+  height: calc(100dvh - 120px);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   justify-content: center;
@@ -3007,6 +3097,8 @@ kbd {
   padding: var(--space-lg);
   overflow-y: auto;
   height: calc(100vh - 120px);
+  /* fallback */
+  height: calc(100dvh - 120px);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   justify-content: center;
