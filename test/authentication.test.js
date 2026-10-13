@@ -5,6 +5,8 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const jwt = require('jsonwebtoken');
+const http = require('node:http');
+const { spawnSync } = require('node:child_process');
 
 async function serverFixture(t) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nodecast-auth-test-'));
@@ -125,4 +127,48 @@ test('separate installations reject each other\'s cookies even when user IDs mat
     assert.notEqual(one.cookie.split('=')[0], two.cookie.split('=')[0]);
     assert.equal((await second.request('/api/auth/me', { headers: { Cookie: one.cookie.split(';')[0] } })).status, 401);
     assert.equal((await first.request('/api/auth/me', { headers: { Cookie: two.cookie.split(';')[0] } })).status, 401);
+});
+
+function ffmpegBinary() {
+    if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0) return 'ffmpeg';
+    try { const binary = require('ffmpeg-static'); if (binary && fs.existsSync(binary)) return binary; } catch {}
+    return null;
+}
+const ffmpeg = ffmpegBinary();
+test('real authenticated media requests deliver remux and owned HLS output without premature cleanup', { skip: ffmpeg ? false : 'FFmpeg unavailable' }, async t => {
+    const fixture = await serverFixture(t);
+    const admin = await fixture.request('/api/auth/setup', post({ username: 'Admin', password: 'password123' }));
+    const adminHeaders = { Cookie: admin.cookie.split(';')[0] };
+    await fixture.request('/api/auth/users', { ...post({ username: 'Viewer', password: 'password123', role: 'viewer' }), headers: adminHeaders });
+    const viewer = await fixture.request('/api/auth/login', post({ username: 'Viewer', password: 'password123' }));
+    const headers = { Cookie: viewer.cookie.split(';')[0] };
+    const sample = path.join(fixture.dir, 'sample.ts');
+    const generated = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=10', '-f', 'lavfi', '-i', 'sine=sample_rate=48000',
+        '-t', '12', '-c:v', 'libx264', '-threads', '1', '-preset', 'ultrafast', '-g', '20', '-c:a', 'libmp3lame', '-f', 'mpegts', sample], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(generated.status, 0, generated.stderr);
+    const bytes = fs.readFileSync(sample);
+    const origin = http.createServer((req, res) => { res.setHeader('Content-Length', bytes.length); res.end(bytes); });
+    await new Promise(resolve => origin.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => { origin.close(resolve); origin.closeAllConnections(); }));
+    const url = `http://127.0.0.1:${origin.address().port}/sample.ts`;
+    const remux = await fetch(`${fixture.base}/api/remux?url=${encodeURIComponent(url)}&audioCodecs=mp3`, { headers, signal: AbortSignal.timeout(10000) });
+    assert.equal(remux.status, 200);
+    const media = Buffer.from(await remux.arrayBuffer());
+    assert.ok(media.includes(Buffer.from('ftyp')));
+    assert.ok(media.includes(Buffer.from('mdat')));
+    const lease = 'real_fixture_playback_lease';
+    const session = await fixture.request('/api/transcode/session', { ...post({ url, videoMode: 'copy', videoCodec: 'h264', playbackLeaseId: lease }), headers });
+    assert.equal(session.status, 200, JSON.stringify(session.body));
+    const playlist = await fetch(`${fixture.base}${session.body.playlistUrl}`, { headers });
+    assert.equal(playlist.status, 200);
+    const text = await playlist.text(), segment = text.split(/\r?\n/).find(line => /^seg\d+\.ts$/.test(line));
+    assert.ok(segment, text);
+    const file = await fetch(`${fixture.base}/api/transcode/${session.body.sessionId}/${segment}`, { headers });
+    assert.equal(file.status, 200);
+    assert.match(file.headers.get('Cache-Control'), /private/);
+    assert.ok((await file.arrayBuffer()).byteLength > 0);
+    assert.equal((await fetch(`${fixture.base}${session.body.playlistUrl}`, { headers: adminHeaders })).status, 404);
+    assert.equal((await fixture.request('/api/transcode/lease', { ...post({ playbackLeaseId: lease }), method: 'DELETE', headers })).status, 200);
+    assert.equal((await fetch(`${fixture.base}${session.body.playlistUrl}`, { headers })).status, 404);
 });

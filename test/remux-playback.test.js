@@ -70,4 +70,18 @@ for (const name of ['VideoPlayer', 'WatchPage']) {
         await playing;
         assert.equal(player.video.src, '');
     });
+    test(`${name} ignores a failed automatic probe after playback stops`, async () => {
+        let fail, started;
+        const probing = new Promise(resolve => { started = resolve; });
+        const player = playerFixture(name, { autoTranscode: true }, () => {
+            started();
+            return new Promise((resolve, reject) => { fail = reject; });
+        });
+        const playing = player.start('http://provider.test/movie.mp4');
+        await probing;
+        player.stop();
+        fail(new Error('Provider unavailable'));
+        await playing;
+        assert.equal(player.video.src, '');
+    });
 }

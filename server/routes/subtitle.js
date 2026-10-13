@@ -66,7 +66,7 @@ router.get('/', (req, res) => {
         // console.error(`[Subtitle FFmpeg] ${data}`);
     });
 
-    req.on('close', () => {
+    res.on('close', () => {
         ffmpeg.kill('SIGKILL');
     });
 

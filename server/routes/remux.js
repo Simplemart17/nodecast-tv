@@ -166,7 +166,7 @@ router.get('/', async (req, res) => {
     });
 
     // Cleanup on client disconnect
-    req.on('close', () => {
+    res.on('close', () => {
         console.log('[Remux] Client disconnected, killing FFmpeg process');
         ffmpeg.kill('SIGKILL');
     });
