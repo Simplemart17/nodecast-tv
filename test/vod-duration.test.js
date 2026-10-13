@@ -16,7 +16,7 @@ test('VOD duration understands provider fields, clock strings and invalid values
 
 test('Watch displays provider totals for sessions, browser totals for direct media, and resets between content', () => {
     const window = {};
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js/pages/WatchPage.js'), 'utf8'), { window, VodDuration });
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js/pages/WatchPage.js'), 'utf8'), { window, VodDuration, CaptionTracks: require('../public/js/components/CaptionTracks') });
     const watch = Object.create(window.WatchPage.prototype);
     let hidden;
     Object.assign(watch, { video: { duration: Infinity }, durationEl: {},

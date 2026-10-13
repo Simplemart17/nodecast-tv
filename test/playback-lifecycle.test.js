@@ -262,12 +262,12 @@ for (const name of ['VideoPlayer', 'WatchPage']) {
     test(`${name} ignores callbacks from an obsolete HLS instance`, () => {
         const window = {};
         class Hls extends EventEmitter {
-            static Events = { MANIFEST_PARSED: 'manifest', ERROR: 'error', SUBTITLE_TRACKS_UPDATED: 'subtitles', SUBTITLE_TRACK_SWITCH: 'switch' };
+            static Events = { MANIFEST_PARSED: 'manifest', ERROR: 'error', SUBTITLE_TRACKS_UPDATED: 'subtitles', SUBTITLE_TRACK_SWITCH: 'switch', NON_NATIVE_TEXT_TRACKS_FOUND: 'non-native', CUES_PARSED: 'cues' };
             static ErrorTypes = { NETWORK_ERROR: 'network', MEDIA_ERROR: 'media' };
             loadSource() {} attachMedia() {} destroy() { this.destroyed = true; }
         }
         const file = name === 'VideoPlayer' ? 'components/VideoPlayer.js' : 'pages/WatchPage.js';
-        vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js', file), 'utf8'), { window, Hls, console: { log() {}, error() {} } });
+        vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js', file), 'utf8'), { window, Hls, CaptionTracks: require('../public/js/components/CaptionTracks'), console: { log() {}, error() {} } });
         const player = Object.create(window[name].prototype);
         let plays = 0;
         player.video = { play: async () => { plays++; } };
